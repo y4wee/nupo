@@ -1,0 +1,26 @@
+{
+  "name": "nupo",
+  "version": "0.1.0",
+  "description": "nupo CLI - a powerful agentic coding tool",
+  "type": "module",
+  "bin": {
+    "nupo": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.tsx",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "ink": "^5.1.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^18.3.1",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0"
+  }
+}
