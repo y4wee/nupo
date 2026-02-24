@@ -16,6 +16,7 @@ import { readConfig, writeConfig } from '../services/config.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { StepsPanel } from '../components/StepsPanel.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
+import { ProgressBar } from '../components/ProgressBar.js';
 
 interface InstallVersionScreenProps {
   config: NupoConfig;
@@ -69,33 +70,6 @@ async function dirExists(p: string): Promise<boolean> {
   try { return (await stat(p)).isDirectory(); } catch { return false; }
 }
 
-// ── Progress bar ────────────────────────────────────────────────────────────
-
-const BAR_WIDTH = 24;
-
-function ProgressBar({ percent }: { percent: number }) {
-  const [frame, setFrame] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setFrame(f => f + 1), 150);
-    return () => clearInterval(id);
-  }, []);
-
-  const pos = Math.min(Math.round((percent / 100) * (BAR_WIDTH - 1)), BAR_WIDTH - 1);
-  const pacman = frame % 2 === 0 ? 'ᗧ' : '○';
-  const eaten = pos;
-  const remaining = BAR_WIDTH - 1 - pos;
-
-  return (
-    <Box>
-      <Text>
-        <Text color="yellow">{'─'.repeat(eaten)}{pacman}</Text>
-        <Text color="gray" dimColor>{'·'.repeat(remaining)}</Text>
-        {` ${String(percent).padStart(3)}%`}
-      </Text>
-    </Box>
-  );
-}
 
 const PHASE_LABEL: Record<GitProgress['phase'], string> = {
   receiving: 'Receiving objects',

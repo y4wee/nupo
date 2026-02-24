@@ -38,6 +38,15 @@ export interface InitStep {
   errorMessage?: string;
 }
 
+export type UpgradeStepId = 'update_community' | 'update_enterprise';
+
+export interface UpgradeStep {
+  id: UpgradeStepId;
+  label: string;
+  status: StepStatus;
+  errorMessage?: string;
+}
+
 export type InstallStepId =
   | 'branch_input'
   | 'check_community'

@@ -24,9 +24,10 @@ function execFileAsync(
   cmd: string,
   args: string[],
   maxBuffer = 1024 * 1024,
+  options: { cwd?: string } = {},
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { maxBuffer, env: GIT_ENV }, (err, stdout, stderr) => {
+    execFile(cmd, args, { maxBuffer, env: GIT_ENV, cwd: options.cwd }, (err, stdout, stderr) => {
       if (err) { reject(err); return; }
       resolve({ stdout: String(stdout), stderr: String(stderr) });
     });
@@ -65,6 +66,87 @@ export async function checkBranch(repoUrl: string, branch: string): Promise<GitR
   } catch (err) {
     return { ok: false, error: (err as NodeJS.ErrnoException).message ?? String(err) };
   }
+}
+
+/**
+ * Get the HEAD commit hash of a local git repository.
+ */
+export async function getLocalCommit(repoPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], 1024 * 1024, { cwd: repoPath });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the HEAD commit hash for a branch on a remote (via ls-remote).
+ */
+export async function getRemoteCommit(repoUrl: string, branch: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['ls-remote', repoUrl, `refs/heads/${branch}`]);
+    const hash = stdout.trim().split(/[\t\s]/)[0] ?? '';
+    return hash || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Update a local shallow clone:
+ *   git fetch --depth 1 --progress origin <branch>  (stderr streamed for progress)
+ *   git reset --hard origin/<branch>
+ */
+export function updateRepo(
+  repoPath: string,
+  branch: string,
+  onProgress?: (progress: GitProgress) => void,
+): Promise<GitResult> {
+  return new Promise(resolve => {
+    const fetchProc = spawn(
+      'git',
+      ['fetch', '--depth', '1', '--progress', 'origin', branch],
+      { env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'], cwd: repoPath },
+    );
+
+    let stderrFull = '';
+
+    fetchProc.stderr?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      stderrFull += text;
+      for (const part of text.split(/[\r\n]/)) {
+        const line = part.trim();
+        if (!line) continue;
+        const progress = parseGitProgress(line);
+        if (progress) onProgress?.(progress);
+      }
+    });
+
+    fetchProc.stdout?.resume();
+
+    let settled = false;
+    const done = (result: GitResult) => {
+      if (!settled) { settled = true; resolve(result); }
+    };
+
+    fetchProc.on('error', err => done({ ok: false, error: err.message }));
+
+    fetchProc.on('close', code => {
+      if (code !== 0) {
+        const errorMsg =
+          stderrFull.split('\n').map(l => l.trim()).filter(l => /^(fatal|error):/i.test(l)).join(' · ') ||
+          stderrFull.trim().split('\n').pop()?.trim() ||
+          'Fetch échoué';
+        done({ ok: false, error: errorMsg });
+        return;
+      }
+      // fetch OK → reset --hard
+      execFileAsync('git', ['reset', '--hard', `origin/${branch}`], 1024 * 1024, { cwd: repoPath })
+        .then(() => done({ ok: true }))
+        .catch(err => done({ ok: false, error: (err as NodeJS.ErrnoException).message }));
+    });
+  });
 }
 
 /**

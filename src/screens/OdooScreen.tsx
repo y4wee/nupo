@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { NupoConfig } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { InstallVersionScreen } from './InstallVersionScreen.js';
+import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
 
 interface OdooScreenProps {
   leftWidth: number;
@@ -17,9 +18,14 @@ const ODOO_OPTIONS = [
     label: 'Installer une version',
     description: "Installer une nouvelle version d'Odoo : télécharge community et enterprise avec --depth 1.",
   },
+  {
+    id: 'upgrade' as const,
+    label: 'Mise à niveau',
+    description: "Mettre à jour une version Odoo installée : récupère les derniers commits de community et enterprise.",
+  },
 ];
 
-type OdooSubScreen = 'install';
+type OdooSubScreen = 'install' | 'upgrade';
 
 export function OdooScreen({ leftWidth, config, onBack, onConfigChange }: OdooScreenProps) {
   const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
@@ -41,6 +47,16 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange }: OdooSc
         config={config}
         leftWidth={leftWidth}
         onComplete={() => { onConfigChange(); setSubScreen(null); }}
+        onBack={() => setSubScreen(null)}
+      />
+    );
+  }
+
+  if (subScreen === 'upgrade') {
+    return (
+      <UpgradeVersionScreen
+        config={config}
+        leftWidth={leftWidth}
         onBack={() => setSubScreen(null)}
       />
     );
