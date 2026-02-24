@@ -74,15 +74,24 @@ async function dirExists(p: string): Promise<boolean> {
 const BAR_WIDTH = 24;
 
 function ProgressBar({ percent }: { percent: number }) {
-  const filled = Math.min(Math.round((percent / 100) * BAR_WIDTH), BAR_WIDTH);
-  const empty = BAR_WIDTH - filled;
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setFrame(f => f + 1), 150);
+    return () => clearInterval(id);
+  }, []);
+
+  const pos = Math.min(Math.round((percent / 100) * (BAR_WIDTH - 1)), BAR_WIDTH - 1);
+  const pacman = frame % 2 === 0 ? 'ᗧ' : '○';
+  const eaten = pos;
+  const remaining = BAR_WIDTH - 1 - pos;
+
   return (
     <Box>
       <Text>
-        {'['}
-        <Text color="cyan">{'█'.repeat(filled)}</Text>
-        <Text color="gray" dimColor>{'░'.repeat(empty)}</Text>
-        {`] ${String(percent).padStart(3)}%`}
+        <Text color="yellow">{'─'.repeat(eaten)}{pacman}</Text>
+        <Text color="gray" dimColor>{'·'.repeat(remaining)}</Text>
+        {` ${String(percent).padStart(3)}%`}
       </Text>
     </Box>
   );
