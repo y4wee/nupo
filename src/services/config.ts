@@ -1,7 +1,10 @@
 import { homedir } from 'os';
 import { join } from 'path';
-import { readFile, writeFile, mkdir, access } from 'fs/promises';
+import { readFile, writeFile, mkdir, access, rename } from 'fs/promises';
 import { NupoConfig, DEFAULT_CONFIG } from '../types/index.js';
+
+// Serialise all writes to prevent concurrent writeFile corruption
+let writeQueue: Promise<void> = Promise.resolve();
 
 function getConfigDir(): string {
   return join(process.env['NUPO_CONFIG_DIR'] ?? homedir(), '.nupo');
@@ -29,9 +32,16 @@ export async function readConfig(): Promise<NupoConfig> {
   }
 }
 
-export async function writeConfig(config: NupoConfig): Promise<void> {
-  await mkdir(getConfigDir(), { recursive: true });
-  await writeFile(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
+export function writeConfig(config: NupoConfig): Promise<void> {
+  writeQueue = writeQueue.then(async () => {
+    const dir = getConfigDir();
+    const dest = getConfigPath();
+    const tmp = dest + '.tmp';
+    await mkdir(dir, { recursive: true });
+    await writeFile(tmp, JSON.stringify(config, null, 2), 'utf-8');
+    await rename(tmp, dest);
+  });
+  return writeQueue;
 }
 
 export async function patchConfig(partial: Partial<NupoConfig>): Promise<void> {
