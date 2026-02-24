@@ -1,0 +1,90 @@
+import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import { NupoConfig } from '../types/index.js';
+import { LeftPanel } from '../components/LeftPanel.js';
+import { InstallVersionScreen } from './InstallVersionScreen.js';
+
+interface OdooScreenProps {
+  leftWidth: number;
+  config: NupoConfig;
+  onBack: () => void;
+  onConfigChange: () => void;
+}
+
+const ODOO_OPTIONS = [
+  {
+    id: 'install' as const,
+    label: 'Installer une version',
+    description: "Installer une nouvelle version d'Odoo : télécharge community et enterprise avec --depth 1.",
+  },
+];
+
+type OdooSubScreen = 'install';
+
+export function OdooScreen({ leftWidth, config, onBack, onConfigChange }: OdooScreenProps) {
+  const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
+  const [selected, setSelected] = useState(0);
+
+  useInput(
+    (_char, key) => {
+      if (key.upArrow) setSelected(prev => (prev - 1 + ODOO_OPTIONS.length) % ODOO_OPTIONS.length);
+      if (key.downArrow) setSelected(prev => (prev + 1) % ODOO_OPTIONS.length);
+      if (key.return) setSubScreen(ODOO_OPTIONS[selected]!.id);
+      if (key.escape) onBack();
+    },
+    { isActive: subScreen === null },
+  );
+
+  if (subScreen === 'install') {
+    return (
+      <InstallVersionScreen
+        config={config}
+        leftWidth={leftWidth}
+        onComplete={() => { onConfigChange(); setSubScreen(null); }}
+        onBack={() => setSubScreen(null)}
+      />
+    );
+  }
+
+  const current = ODOO_OPTIONS[selected]!;
+
+  return (
+    <Box flexDirection="row">
+      <LeftPanel width={leftWidth} />
+
+      <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
+        <Text color="cyan" bold>
+          Odoo
+        </Text>
+
+        <Box borderStyle="round" borderColor="gray" paddingX={1} paddingY={0}>
+          <Text color="gray" wrap="wrap">
+            {current.description}
+          </Text>
+        </Box>
+
+        <Box flexDirection="column" marginTop={1} gap={0}>
+          {ODOO_OPTIONS.map((opt, i) => {
+            const isSelected = i === selected;
+            return (
+              <Text
+                key={opt.id}
+                color={isSelected ? 'black' : 'white'}
+                backgroundColor={isSelected ? 'cyan' : undefined}
+                bold={isSelected}
+              >
+                {` ${isSelected ? '▶' : ' '} ${opt.label}`}
+              </Text>
+            );
+          })}
+        </Box>
+
+        <Box marginTop={1}>
+          <Text color="gray" dimColor>
+            {'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour'}
+          </Text>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
