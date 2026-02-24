@@ -9,6 +9,15 @@ export interface PendingInstall {
   lastCompletedStep: InstallStepId | null;
 }
 
+export interface OdooServiceConfig {
+  name: string;
+  branch: string;
+  versionPath: string;
+  useEnterprise: boolean;
+  customFolders: string[];
+  confPath: string;
+}
+
 export interface NupoConfig {
   initiated: boolean;
   python_installed: boolean;
@@ -16,6 +25,7 @@ export interface NupoConfig {
   odoo_path_repo: string;
   odoo_versions: Record<string, OdooVersion>;
   pending_installs?: Record<string, PendingInstall>;
+  odoo_services?: Record<string, OdooServiceConfig>;
 }
 
 export const DEFAULT_CONFIG: NupoConfig = {
@@ -25,6 +35,7 @@ export const DEFAULT_CONFIG: NupoConfig = {
   odoo_path_repo: '',
   odoo_versions: {},
   pending_installs: {},
+  odoo_services: {},
 };
 
 export type Screen = 'home' | 'init' | 'odoo' | 'config';

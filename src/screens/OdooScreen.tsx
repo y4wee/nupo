@@ -4,6 +4,7 @@ import { NupoConfig } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { InstallVersionScreen } from './InstallVersionScreen.js';
 import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
+import { OdooServiceScreen } from './OdooServiceScreen.js';
 
 interface OdooScreenProps {
   leftWidth: number;
@@ -23,9 +24,14 @@ const ODOO_OPTIONS = [
     label: 'Mise à niveau',
     description: "Mettre à jour une version Odoo installée : récupère les derniers commits de community et enterprise.",
   },
+  {
+    id: 'service' as const,
+    label: 'Configurer Service Odoo',
+    description: "Créer ou modifier un fichier de configuration .conf pour démarrer un service Odoo.",
+  },
 ];
 
-type OdooSubScreen = 'install' | 'upgrade';
+type OdooSubScreen = 'install' | 'upgrade' | 'service';
 
 export function OdooScreen({ leftWidth, config, onBack, onConfigChange }: OdooScreenProps) {
   const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
@@ -58,6 +64,17 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange }: OdooSc
         config={config}
         leftWidth={leftWidth}
         onBack={() => setSubScreen(null)}
+      />
+    );
+  }
+
+  if (subScreen === 'service') {
+    return (
+      <OdooServiceScreen
+        config={config}
+        leftWidth={leftWidth}
+        onBack={() => setSubScreen(null)}
+        onConfigChange={() => { onConfigChange(); setSubScreen(null); }}
       />
     );
   }
