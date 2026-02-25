@@ -56,10 +56,27 @@ function buildLaunchCmd(
   return { cmd: python, args };
 }
 
-function logColor(line: string): string {
-  if (/\bCRITICAL\b|\bERROR\b/.test(line)) return 'red';
-  if (/\bWARNING\b/.test(line))             return 'yellow';
-  return 'gray';
+const LEVEL_COLORS: Record<string, string> = {
+  INFO:     'green',
+  WARNING:  'yellow',
+  ERROR:    'red',
+  CRITICAL: 'red',
+  DEBUG:    'gray',
+};
+
+function LogLine({ line, idx }: { line: string; idx: number }): React.ReactElement {
+  const match = line.match(/\b(INFO|WARNING|ERROR|CRITICAL|DEBUG)\b/);
+  if (!match || match.index === undefined) {
+    return <Text key={idx} color="white" wrap="wrap">{line}</Text>;
+  }
+  const level  = match[0]!;
+  const before = line.slice(0, match.index);
+  const after  = line.slice(match.index + level.length);
+  return (
+    <Text key={idx} color="white" wrap="wrap">
+      {before}<Text color={LEVEL_COLORS[level]}>{level}</Text>{after}
+    </Text>
+  );
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -102,9 +119,10 @@ export function StartServiceScreen({
   const service  = services[selected] as OdooServiceConfig | undefined;
   const warnNoDb = !!moduleName && !dbName;
 
-  // Dynamic log window height: total rows minus overhead (borders, URL box, header, footer)
-  const termRows    = stdout?.rows ?? 24;
-  const visibleLines = Math.max(5, termRows - 14);
+  // Running: full width → more vertical space for logs
+  // Overhead: app border(2) + app header(1) + paddingY(2) + title(1) + URL box(3) + status(1) + footer(1) + gaps(2) = 13
+  const termRows     = stdout?.rows ?? 24;
+  const visibleLines = Math.max(5, termRows - 13);
 
   // ── Launch ────────────────────────────────────────────────────────────────
 
@@ -215,12 +233,52 @@ export function StartServiceScreen({
 
   // ── JSX ───────────────────────────────────────────────────────────────────
 
+  if (step === 'running' && activeService) {
+    return (
+      <Box flexGrow={1} flexDirection="column" paddingX={2} paddingY={1} gap={1}>
+        {/* Header */}
+        <Box flexDirection="row" gap={2}>
+          <Text color="cyan" bold>Démarrer Service Odoo</Text>
+          <Text color="yellow" bold>{activeService.name}</Text>
+          {exitCode === null ? (
+            <Text color="green">● en cours</Text>
+          ) : (
+            <Text color={exitCode === 0 ? 'green' : 'red'}>■ arrêté (code {exitCode})</Text>
+          )}
+          {scrollOffset > 0 && <Text color="gray" dimColor>↑ +{scrollOffset} lignes</Text>}
+        </Box>
+
+        {/* URL */}
+        <Box borderStyle="round" borderColor="gray" paddingX={2} paddingY={0}>
+          <Text color="cyan">
+            {`http://localhost:${httpPortForBranch(activeService.branch)}`}
+          </Text>
+        </Box>
+
+        {/* Logs */}
+        <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
+          {visibleLogs.length === 0 ? (
+            <Text color="gray" dimColor>En attente des logs…</Text>
+          ) : (
+            visibleLogs.map((line, i) => <LogLine key={start + i} line={line} idx={start + i} />)
+          )}
+        </Box>
+
+        {/* Controls */}
+        <Box>
+          {exitCode === null ? (
+            <Text color="gray" dimColor>↑↓ défiler  ·  Ctrl+C arrêter le service</Text>
+          ) : (
+            <Text color="gray" dimColor>↑↓ défiler  ·  Échap retour</Text>
+          )}
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="row" flexGrow={1}>
-      <LeftPanel
-        width={leftWidth}
-        serviceLabel={step === 'running' ? (activeService?.name ?? '') : undefined}
-      />
+      <LeftPanel width={leftWidth} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
         <Text color="cyan" bold>Démarrer Service Odoo</Text>
@@ -343,52 +401,6 @@ export function StartServiceScreen({
           </Box>
         )}
 
-        {/* ── running ── */}
-        {step === 'running' && activeService && (
-          <Box flexDirection="column" gap={1} marginTop={1}>
-
-            {/* URL box */}
-            <Box borderStyle="round" borderColor="gray" paddingX={2} paddingY={0}>
-              <Text color="cyan">
-                {`http://localhost:${httpPortForBranch(activeService.branch)}`}
-              </Text>
-            </Box>
-
-            {/* Logs box */}
-            <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
-              {visibleLogs.length === 0 ? (
-                <Text color="gray" dimColor>En attente des logs…</Text>
-              ) : (
-                visibleLogs.map((line, i) => (
-                  <Text key={i} color={logColor(line)} wrap="wrap">{line}</Text>
-                ))
-              )}
-            </Box>
-
-            {/* Status bar */}
-            <Box flexDirection="row" gap={2}>
-              {exitCode === null ? (
-                <Text color="green">● en cours</Text>
-              ) : (
-                <Text color={exitCode === 0 ? 'green' : 'red'}>
-                  ■ arrêté (code {exitCode})
-                </Text>
-              )}
-              {scrollOffset > 0 && (
-                <Text color="gray" dimColor>↑ +{scrollOffset} lignes</Text>
-              )}
-            </Box>
-
-            {/* Controls */}
-            <Box>
-              {exitCode === null ? (
-                <Text color="gray" dimColor>↑↓ défiler  ·  Ctrl+C arrêter le service</Text>
-              ) : (
-                <Text color="gray" dimColor>↑↓ défiler  ·  Échap retour</Text>
-              )}
-            </Box>
-          </Box>
-        )}
       </Box>
     </Box>
   );
