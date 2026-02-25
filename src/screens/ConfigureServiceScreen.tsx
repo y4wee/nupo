@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
-import { readdir, stat, mkdir, writeFile } from 'fs/promises';
+import { readdir, stat, mkdir, writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { NupoConfig, OdooVersion, OdooServiceConfig } from '../types/index.js';
 import { readConfig, writeConfig, readBaseConf } from '../services/config.js';
@@ -18,7 +18,7 @@ interface ConfigureServiceScreenProps {
 
 // ── Step type ────────────────────────────────────────────────────────────────
 // 'edit_list' = param selection screen shown in edit mode
-type Step = 'edit_list' | 'name' | 'version' | 'enterprise' | 'custom_folders' | 'saving' | 'done';
+type Step = 'edit_list' | 'name' | 'version' | 'enterprise' | 'custom_folders' | 'saving' | 'done' | 'confirm_delete';
 
 const EDIT_PARAMS = [
   { key: 'name'           as const, label: 'Nom' },
@@ -26,6 +26,7 @@ const EDIT_PARAMS = [
   { key: 'enterprise'     as const, label: 'Enterprise' },
   { key: 'custom_folders' as const, label: 'Dossiers custom' },
   { key: 'open_conf'      as const, label: 'Modifier odoo.conf' },
+  { key: 'delete'         as const, label: 'Supprimer' },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -276,6 +277,7 @@ export function ConfigureServiceScreen({
         case 'enterprise':     void openEnterpriseEdit(); break;
         case 'custom_folders': void openCustomFoldersEdit(); break;
         case 'open_conf':      openInEditor(initialService!.confPath); break;
+        case 'delete':         setStep('confirm_delete'); break;
       }
     }
   }, { isActive: step === 'edit_list' });
@@ -333,6 +335,26 @@ export function ConfigureServiceScreen({
     { isActive: step === 'done' },
   );
 
+  // confirm_delete
+  useInput(
+    (_char, key) => {
+      if (key.escape) { setStep('edit_list'); return; }
+      if (key.return) void handleDelete();
+    },
+    { isActive: step === 'confirm_delete' },
+  );
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+
+  const handleDelete = useCallback(async () => {
+    try { await unlink(initialService!.confPath); } catch { /* already gone */ }
+    const current = await readConfig();
+    const services = { ...(current.odoo_services ?? {}) };
+    delete services[initialService!.name];
+    await writeConfig({ ...current, odoo_services: services });
+    onComplete();
+  }, [initialService, onComplete]);
+
   // ── Name submit (shared between create & edit) ────────────────────────────
 
   const handleNameSubmit = (value: string) => {
@@ -362,6 +384,7 @@ export function ConfigureServiceScreen({
     enterprise:     hasEnterprise ? (enterpriseAction === 0 ? 'Oui' : 'Non') : 'Non disponible',
     custom_folders: selectedFolders.size > 0 ? [...selectedFolders].join(', ') : 'Aucun',
     open_conf:      '↵ ouvrir dans $EDITOR',
+    delete:         '',
   };
 
   // ── JSX ───────────────────────────────────────────────────────────────────
@@ -380,12 +403,13 @@ export function ConfigureServiceScreen({
           <Box flexDirection="column" gap={0} marginTop={1}>
             {EDIT_PARAMS.map((p, i) => {
               const isSel = i === editParamCursor;
+              const isDel = p.key === 'delete';
               return (
                 <Box key={p.key} flexDirection="row" gap={1}>
                   <Text
-                    color={isSel ? 'black' : 'white'}
-                    backgroundColor={isSel ? 'cyan' : undefined}
-                    bold={isSel}
+                    color={isSel ? 'black' : (isDel ? 'red' : 'white')}
+                    backgroundColor={isSel ? (isDel ? 'red' : 'cyan') : undefined}
+                    bold={isSel || isDel}
                   >
                     {` ${isSel ? '▶' : ' '} ${p.label.padEnd(16)}`}
                   </Text>
@@ -515,6 +539,18 @@ export function ConfigureServiceScreen({
                 </Box>
               </Box>
             )}
+          </Box>
+        )}
+
+        {/* ── confirm_delete ── */}
+        {step === 'confirm_delete' && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Text color="red" bold>Supprimer le service «{initialService!.name}» ?</Text>
+            <Text color="gray" dimColor>  Le fichier .conf sera également supprimé :</Text>
+            <Text color="gray" dimColor>  {initialService!.confPath}</Text>
+            <Box marginTop={1}>
+              <Text color="gray" dimColor>↵ confirmer  ·  Échap annuler</Text>
+            </Box>
           </Box>
         )}
 
