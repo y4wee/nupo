@@ -263,7 +263,7 @@ export function StartServiceScreen({
         </Box>
 
         {/* Logs */}
-        <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
+        <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column" height={visibleLines + 2}>
           {visibleLogs.length === 0 ? (
             <Text color="gray" dimColor>En attente des logs…</Text>
           ) : (
