@@ -7,14 +7,19 @@ type RawStdin = NodeJS.ReadStream & { setRawMode?: (mode: boolean) => void };
  * preferred editor ($EDITOR / $VISUAL, fallback: nano).
  * Blocks until the editor process exits, then restores raw mode.
  */
-export function openInEditor(filePath: string): void {
-  const editor = process.env['EDITOR'] ?? process.env['VISUAL'] ?? 'nano';
+function withRawModeDisabled(fn: () => void): void {
   const stdin = process.stdin as RawStdin;
-
   if (stdin.isTTY) stdin.setRawMode?.(false);
   process.stdout.write('\u001B[?25h'); // ensure cursor visible
-
-  spawnSync(editor, [filePath], { stdio: 'inherit' });
-
+  fn();
   if (stdin.isTTY) stdin.setRawMode?.(true);
+}
+
+export function openInEditor(filePath: string): void {
+  const editor = process.env['EDITOR'] ?? process.env['VISUAL'] ?? 'nano';
+  withRawModeDisabled(() => spawnSync(editor, [filePath], { stdio: 'inherit' }));
+}
+
+export function runInTerminal(cmd: string, args: string[]): void {
+  withRawModeDisabled(() => spawnSync(cmd, args, { stdio: 'inherit' }));
 }

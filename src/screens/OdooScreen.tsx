@@ -5,6 +5,7 @@ import { LeftPanel } from '../components/LeftPanel.js';
 import { InstallVersionScreen } from './InstallVersionScreen.js';
 import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
 import { OdooServiceScreen } from './OdooServiceScreen.js';
+import { StartServiceScreen } from './StartServiceScreen.js';
 
 interface OdooScreenProps {
   leftWidth: number;
@@ -29,9 +30,14 @@ const ODOO_OPTIONS = [
     label: 'Configurer Service Odoo',
     description: "Créer ou modifier un fichier de configuration .conf pour démarrer un service Odoo.",
   },
+  {
+    id: 'start' as const,
+    label: 'Démarrer Service Odoo',
+    description: "Lancer un service Odoo configuré avec des arguments supplémentaires optionnels.",
+  },
 ];
 
-type OdooSubScreen = 'install' | 'upgrade' | 'service';
+type OdooSubScreen = 'install' | 'upgrade' | 'service' | 'start';
 
 export function OdooScreen({ leftWidth, config, onBack, onConfigChange }: OdooScreenProps) {
   const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
@@ -75,6 +81,16 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange }: OdooSc
         leftWidth={leftWidth}
         onBack={() => setSubScreen(null)}
         onConfigChange={() => { onConfigChange(); setSubScreen(null); }}
+      />
+    );
+  }
+
+  if (subScreen === 'start') {
+    return (
+      <StartServiceScreen
+        config={config}
+        leftWidth={leftWidth}
+        onBack={() => setSubScreen(null)}
       />
     );
   }
