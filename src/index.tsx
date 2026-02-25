@@ -8,6 +8,7 @@ let instance: ReturnType<typeof render>;
 function handleExit() {
   instance.clear();
   instance.unmount();
+  process.stdout.write('\x1B[2J\x1B[H');
 }
 
 instance = render(<App onExit={handleExit} />, {
