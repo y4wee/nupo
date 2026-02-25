@@ -121,7 +121,9 @@ export function StartServiceScreen({
   const service  = services[selected] as OdooServiceConfig | undefined;
   const warnNoDb = !!moduleName && !dbName;
 
-  const visibleLines = Math.max(5, rows - 12);
+  // visibleLines limits the slice fed to the log box (scrolling window).
+  // The box itself uses flexGrow={1} + overflow="hidden" to fill remaining space.
+  const visibleLines = Math.max(5, rows);
 
   // ── Launch ────────────────────────────────────────────────────────────────
 
@@ -289,7 +291,7 @@ export function StartServiceScreen({
         </Box>
 
         {/* Logs */}
-        <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column" height={visibleLines + 2} overflow="hidden">
+        <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column" flexGrow={1} overflow="hidden">
           {visibleLogs.length === 0 ? (
             <Text color="gray" dimColor>En attente des logs…</Text>
           ) : (
