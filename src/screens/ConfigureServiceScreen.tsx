@@ -42,8 +42,22 @@ async function loadCustomFolders(versionPath: string): Promise<string[]> {
   } catch { return []; }
 }
 
-async function generateConfContent(): Promise<string> {
-  return readBaseConf();
+function httpPortForBranch(branch: string): number {
+  const m = branch.match(/(\d+)\./);
+  return m ? 8000 + parseInt(m[1]!, 10) : 8069;
+}
+
+function injectHttpPort(conf: string, branch: string): string {
+  const line = `http_port = ${httpPortForBranch(branch)}`;
+  const lines = conf.split('\n');
+  const idx = lines.findIndex(l => l.trimStart().startsWith('http_port'));
+  if (idx >= 0) lines[idx] = line;
+  return lines.join('\n');
+}
+
+async function generateConfContent(branch: string): Promise<string> {
+  const baseConf = await readBaseConf();
+  return injectHttpPort(baseConf, branch);
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -120,7 +134,7 @@ export function ConfigureServiceScreen({
       confPath,
     };
     await mkdir(join(opts.version.path, 'config'), { recursive: true });
-    await writeFile(confPath, await generateConfContent(), 'utf-8');
+    await writeFile(confPath, await generateConfContent(opts.version.branch), 'utf-8');
 
     const current = await readConfig();
     const services = { ...(current.odoo_services ?? {}) };
