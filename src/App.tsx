@@ -15,7 +15,7 @@ interface AppProps {
 }
 
 export function App({ onExit }: AppProps) {
-  const { columns } = useTerminalSize();
+  const { columns, rows } = useTerminalSize();
   const { config, loading, refresh } = useConfig();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [confirmExit, setConfirmExit] = useState(false);
@@ -82,7 +82,7 @@ export function App({ onExit }: AppProps) {
 
   if (loading) {
     return (
-      <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth}>
+      <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth} height={rows}>
         <Header />
         <Box paddingX={3} paddingY={2}>
           <Text color="gray" dimColor>
@@ -94,7 +94,7 @@ export function App({ onExit }: AppProps) {
   }
 
   return (
-    <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth}>
+    <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth} height={rows}>
       <Header />
 
       {currentScreen === 'home' && (
