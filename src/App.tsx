@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { Screen, MenuOption } from './types/index.js';
 import { useConfig } from './hooks/useConfig.js';
+import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { Header } from './components/Header.js';
 import { ConfirmExit } from './components/ConfirmExit.js';
 import { HomeScreen } from './screens/HomeScreen.js';
@@ -14,7 +15,7 @@ interface AppProps {
 }
 
 export function App({ onExit }: AppProps) {
-  const { stdout } = useStdout();
+  const { columns } = useTerminalSize();
   const { config, loading, refresh } = useConfig();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [confirmExit, setConfirmExit] = useState(false);
@@ -76,7 +77,7 @@ export function App({ onExit }: AppProps) {
     setCurrentScreen('home');
   }, [refresh]);
 
-  const termWidth = (stdout?.columns ?? 80) - 2;
+  const termWidth = columns - 2;
   const leftWidth = Math.floor(termWidth * 0.33);
 
   if (loading) {

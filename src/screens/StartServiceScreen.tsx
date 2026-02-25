@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
 import { NupoConfig, OdooServiceConfig } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 
 interface StartServiceScreenProps {
   config: NupoConfig;
@@ -88,7 +89,7 @@ export function StartServiceScreen({
   onServiceRunning,
   onServiceStopped,
 }: StartServiceScreenProps) {
-  const { stdout } = useStdout();
+  const { rows } = useTerminalSize();
   const services = Object.values(config.odoo_services ?? {});
 
   const [step,       setStep]       = useState<Step>('select');
@@ -120,8 +121,7 @@ export function StartServiceScreen({
   const service  = services[selected] as OdooServiceConfig | undefined;
   const warnNoDb = !!moduleName && !dbName;
 
-  const termRows     = stdout?.rows ?? 24;
-  const visibleLines = Math.max(5, termRows - 12);
+  const visibleLines = Math.max(5, rows - 12);
 
   // ── Launch ────────────────────────────────────────────────────────────────
 
