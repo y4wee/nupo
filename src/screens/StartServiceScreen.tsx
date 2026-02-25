@@ -108,6 +108,7 @@ export function StartServiceScreen({
   const childRef         = useRef<ChildProcess | null>(null);
   const mountedRef       = useRef(true);
   const activeServiceRef = useRef<OdooServiceConfig | null>(null);
+  const userStoppedRef   = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -151,7 +152,15 @@ export function StartServiceScreen({
     proc.on('close', code => {
       childRef.current = null;
       if (!mountedRef.current) return;
-      setExitCode(code ?? -1);
+      if (userStoppedRef.current) {
+        userStoppedRef.current = false;
+        setLogs([]);
+        setExitCode(null);
+        setScrollOffset(0);
+        setStep('args_list');
+      } else {
+        setExitCode(code ?? -1);
+      }
       onServiceStopped();
     });
   };
@@ -205,6 +214,7 @@ export function StartServiceScreen({
     }
 
     if (key.ctrl && char === 'c') {
+      userStoppedRef.current = true;
       childRef.current?.kill('SIGTERM');
     }
   }, { isActive: step === 'running' });
