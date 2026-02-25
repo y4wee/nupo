@@ -10,9 +10,10 @@ const WELCOME = 'Bienvenue\nNuprodien';
 
 interface LeftPanelProps {
   width: number;
+  serviceLabel?: string;
 }
 
-export function LeftPanel({ width }: LeftPanelProps) {
+export function LeftPanel({ width, serviceLabel }: LeftPanelProps) {
   const [typedText, setTypedText] = useState('');
 
   useEffect(() => {
@@ -48,6 +49,12 @@ export function LeftPanel({ width }: LeftPanelProps) {
           {typedText.split('\n')[1] ?? ''}
         </Text>
       </Box>
+      {serviceLabel && (
+        <Box flexDirection="column" gap={0}>
+          <Text color="gray" dimColor>Service</Text>
+          <Text color="yellow" bold>{serviceLabel}</Text>
+        </Box>
+      )}
     </Box>
   );
 }

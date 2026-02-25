@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdout } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
@@ -10,6 +10,8 @@ interface StartServiceScreenProps {
   config: NupoConfig;
   leftWidth: number;
   onBack: () => void;
+  onServiceRunning: () => void;
+  onServiceStopped: () => void;
 }
 
 type Step = 'select' | 'args_list' | 'input_db' | 'input_module' | 'running';
@@ -22,9 +24,12 @@ const ARGS_ITEMS = [
   { key: 'launch'          as const, label: 'Lancer →',          type: 'action' as const },
 ];
 
-const VISIBLE_LINES = 20;
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+function httpPortForBranch(branch: string): number {
+  const m = branch.match(/(\d+)\./);
+  return m ? 8000 + parseInt(m[1]!, 10) : 8069;
+}
 
 function buildAddonsPaths(service: OdooServiceConfig): string[] {
   const paths = [join(service.versionPath, 'community', 'addons')];
@@ -59,7 +64,14 @@ function logColor(line: string): string {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceScreenProps) {
+export function StartServiceScreen({
+  config,
+  leftWidth,
+  onBack,
+  onServiceRunning,
+  onServiceStopped,
+}: StartServiceScreenProps) {
+  const { stdout } = useStdout();
   const services = Object.values(config.odoo_services ?? {});
 
   const [step,       setStep]       = useState<Step>('select');
@@ -80,7 +92,6 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
   const mountedRef       = useRef(true);
   const activeServiceRef = useRef<OdooServiceConfig | null>(null);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       mountedRef.current = false;
@@ -88,8 +99,12 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
     };
   }, []);
 
-  const service = services[selected] as OdooServiceConfig | undefined;
+  const service  = services[selected] as OdooServiceConfig | undefined;
   const warnNoDb = !!moduleName && !dbName;
+
+  // Dynamic log window height: total rows minus overhead (borders, URL box, header, footer)
+  const termRows    = stdout?.rows ?? 24;
+  const visibleLines = Math.max(5, termRows - 14);
 
   // ── Launch ────────────────────────────────────────────────────────────────
 
@@ -100,6 +115,7 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
     setExitCode(null);
     setScrollOffset(0);
     setStep('running');
+    onServiceRunning();
 
     const { cmd, args } = buildLaunchCmd(service, {
       shell: useShell, db: dbName, module: moduleName, stopAfterInit,
@@ -118,7 +134,9 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
     proc.stderr?.on('data', appendChunk);
     proc.on('close', code => {
       childRef.current = null;
-      if (mountedRef.current) setExitCode(code ?? -1);
+      if (!mountedRef.current) return;
+      setExitCode(code ?? -1);
+      onServiceStopped();
     });
   };
 
@@ -170,17 +188,17 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
       return;
     }
 
-    if (char === 'q' || (key.ctrl && char === 'c')) {
+    if (key.ctrl && char === 'c') {
       childRef.current?.kill('SIGTERM');
     }
   }, { isActive: step === 'running' });
 
   // ── Log window ────────────────────────────────────────────────────────────
 
-  const maxScroll  = Math.max(0, logs.length - VISIBLE_LINES);
-  const offset     = Math.min(scrollOffset, maxScroll);
-  const end        = logs.length - offset;
-  const start      = Math.max(0, end - VISIBLE_LINES);
+  const maxScroll   = Math.max(0, logs.length - visibleLines);
+  const offset      = Math.min(scrollOffset, maxScroll);
+  const end         = logs.length - offset;
+  const start       = Math.max(0, end - visibleLines);
   const visibleLogs = logs.slice(start, end);
 
   // ── Render helpers ────────────────────────────────────────────────────────
@@ -191,14 +209,18 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
     module:          !!moduleName,
     stop_after_init: stopAfterInit,
   };
-
   const argDisplay: Record<string, string> = { db: dbName, module: moduleName };
+
+  const activeService = activeServiceRef.current;
 
   // ── JSX ───────────────────────────────────────────────────────────────────
 
   return (
     <Box flexDirection="row" flexGrow={1}>
-      <LeftPanel width={leftWidth} />
+      <LeftPanel
+        width={leftWidth}
+        serviceLabel={step === 'running' ? (activeService?.name ?? '') : undefined}
+      />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
         <Text color="cyan" bold>Démarrer Service Odoo</Text>
@@ -322,10 +344,29 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
         )}
 
         {/* ── running ── */}
-        {step === 'running' && (
-          <Box flexDirection="column" gap={0} marginTop={1}>
+        {step === 'running' && activeService && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+
+            {/* URL box */}
+            <Box borderStyle="round" borderColor="gray" paddingX={2} paddingY={0}>
+              <Text color="cyan">
+                {`http://localhost:${httpPortForBranch(activeService.branch)}`}
+              </Text>
+            </Box>
+
+            {/* Logs box */}
+            <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
+              {visibleLogs.length === 0 ? (
+                <Text color="gray" dimColor>En attente des logs…</Text>
+              ) : (
+                visibleLogs.map((line, i) => (
+                  <Text key={i} color={logColor(line)} wrap="wrap">{line}</Text>
+                ))
+              )}
+            </Box>
+
+            {/* Status bar */}
             <Box flexDirection="row" gap={2}>
-              <Text color="white" bold>{activeServiceRef.current?.name}</Text>
               {exitCode === null ? (
                 <Text color="green">● en cours</Text>
               ) : (
@@ -338,25 +379,10 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
               )}
             </Box>
 
-            <Box
-              borderStyle="round"
-              borderColor="gray"
-              flexDirection="column"
-              paddingX={1}
-              marginTop={1}
-            >
-              {visibleLogs.length === 0 ? (
-                <Text color="gray" dimColor>En attente des logs…</Text>
-              ) : (
-                visibleLogs.map((line, i) => (
-                  <Text key={i} color={logColor(line)} wrap="truncate">{line}</Text>
-                ))
-              )}
-            </Box>
-
-            <Box marginTop={1}>
+            {/* Controls */}
+            <Box>
               {exitCode === null ? (
-                <Text color="gray" dimColor>↑↓ défiler  ·  q arrêter le service</Text>
+                <Text color="gray" dimColor>↑↓ défiler  ·  Ctrl+C arrêter le service</Text>
               ) : (
                 <Text color="gray" dimColor>↑↓ défiler  ·  Échap retour</Text>
               )}

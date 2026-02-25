@@ -12,6 +12,8 @@ interface OdooScreenProps {
   config: NupoConfig;
   onBack: () => void;
   onConfigChange: () => void;
+  onServiceRunning: () => void;
+  onServiceStopped: () => void;
 }
 
 const ODOO_OPTIONS = [
@@ -39,7 +41,7 @@ const ODOO_OPTIONS = [
 
 type OdooSubScreen = 'install' | 'upgrade' | 'service' | 'start';
 
-export function OdooScreen({ leftWidth, config, onBack, onConfigChange }: OdooScreenProps) {
+export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServiceRunning, onServiceStopped }: OdooScreenProps) {
   const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
   const [selected, setSelected] = useState(0);
 
@@ -91,6 +93,8 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange }: OdooSc
         config={config}
         leftWidth={leftWidth}
         onBack={() => setSubScreen(null)}
+        onServiceRunning={onServiceRunning}
+        onServiceStopped={onServiceStopped}
       />
     );
   }

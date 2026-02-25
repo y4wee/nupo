@@ -19,6 +19,7 @@ export function App({ onExit }: AppProps) {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [confirmExit, setConfirmExit] = useState(false);
   const [confirmSelected, setConfirmSelected] = useState(1);
+  const [serviceRunning, setServiceRunning] = useState(false);
 
   const options = useMemo<MenuOption[]>(
     () =>
@@ -64,7 +65,7 @@ export function App({ onExit }: AppProps) {
       return;
     }
 
-    if (key.ctrl && char === 'c') {
+    if (key.ctrl && char === 'c' && !serviceRunning) {
       setConfirmExit(true);
       setConfirmSelected(1);
     }
@@ -118,6 +119,8 @@ export function App({ onExit }: AppProps) {
           config={config}
           onBack={() => setCurrentScreen('home')}
           onConfigChange={() => void refresh()}
+          onServiceRunning={() => setServiceRunning(true)}
+          onServiceStopped={() => setServiceRunning(false)}
         />
       )}
 
