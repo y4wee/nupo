@@ -121,7 +121,7 @@ export function StartServiceScreen({
   const warnNoDb = !!moduleName && !dbName;
 
   const termRows     = stdout?.rows ?? 24;
-  const visibleLines = Math.max(5, termRows - 9);
+  const visibleLines = Math.max(5, termRows - 6);
 
   // ── Launch ────────────────────────────────────────────────────────────────
 
