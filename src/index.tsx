@@ -13,3 +13,7 @@ function handleExit() {
 instance = render(<App onExit={handleExit} />, {
   exitOnCtrlC: false,
 });
+
+process.stdout.on('resize', () => {
+  instance.clear();
+});
