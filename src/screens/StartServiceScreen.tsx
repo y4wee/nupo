@@ -119,10 +119,8 @@ export function StartServiceScreen({
   const service  = services[selected] as OdooServiceConfig | undefined;
   const warnNoDb = !!moduleName && !dbName;
 
-  // Running: full width → more vertical space for logs
-  // Overhead: app border(2) + app header(1) + paddingY(2) + title(1) + URL box(3) + status(1) + footer(1) + gaps(2) = 13
   const termRows     = stdout?.rows ?? 24;
-  const visibleLines = Math.max(5, termRows - 13);
+  const visibleLines = Math.max(5, termRows - 9);
 
   // ── Launch ────────────────────────────────────────────────────────────────
 
@@ -248,11 +246,10 @@ export function StartServiceScreen({
           {scrollOffset > 0 && <Text color="gray" dimColor>↑ +{scrollOffset} lignes</Text>}
         </Box>
 
-        {/* URL */}
-        <Box borderStyle="round" borderColor="gray" paddingX={2} paddingY={0}>
-          <Text color="cyan">
-            {`http://localhost:${httpPortForBranch(activeService.branch)}`}
-          </Text>
+        {/* URLs */}
+        <Box borderStyle="round" borderColor="gray" paddingX={2} paddingY={0} flexDirection="column">
+          <Text color="yellow">{`http://localhost:${httpPortForBranch(activeService.branch)}`}</Text>
+          <Text color="yellow">{`http://localhost:${httpPortForBranch(activeService.branch)}/web/database/manager`}</Text>
         </Box>
 
         {/* Logs */}
