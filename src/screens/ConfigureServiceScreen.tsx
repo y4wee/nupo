@@ -5,6 +5,7 @@ import { readdir, stat, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { NupoConfig, OdooVersion, OdooServiceConfig } from '../types/index.js';
 import { readConfig, writeConfig, readBaseConf } from '../services/config.js';
+import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 
 interface ConfigureServiceScreenProps {
@@ -24,6 +25,7 @@ const EDIT_PARAMS = [
   { key: 'version'        as const, label: 'Version' },
   { key: 'enterprise'     as const, label: 'Enterprise' },
   { key: 'custom_folders' as const, label: 'Dossiers custom' },
+  { key: 'open_conf'      as const, label: 'Modifier odoo.conf' },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -39,31 +41,8 @@ async function loadCustomFolders(versionPath: string): Promise<string[]> {
   } catch { return []; }
 }
 
-function buildAddonsPaths(service: OdooServiceConfig): string[] {
-  const paths: string[] = [join(service.versionPath, 'community', 'addons')];
-  if (service.useEnterprise) paths.push(join(service.versionPath, 'enterprise'));
-  for (const f of service.customFolders) paths.push(join(service.versionPath, 'custom', f));
-  return paths;
-}
-
-/** Inject or replace addons_path in an existing Odoo INI conf string. */
-function injectAddonsPath(baseConf: string, paths: string[]): string {
-  const line = `addons_path = ${paths.join(',')}`;
-  const lines = baseConf.split('\n');
-  const idx = lines.findIndex(l => l.trimStart().startsWith('addons_path'));
-  if (idx >= 0) {
-    lines[idx] = line;
-  } else {
-    const optIdx = lines.findIndex(l => l.trim() === '[options]');
-    if (optIdx >= 0) lines.splice(optIdx + 1, 0, line);
-    else lines.unshift('[options]', line);
-  }
-  return lines.join('\n');
-}
-
-async function generateConfContent(service: OdooServiceConfig): Promise<string> {
-  const baseConf = await readBaseConf();
-  return injectAddonsPath(baseConf, buildAddonsPaths(service));
+async function generateConfContent(): Promise<string> {
+  return readBaseConf();
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -140,7 +119,7 @@ export function ConfigureServiceScreen({
       confPath,
     };
     await mkdir(join(opts.version.path, 'config'), { recursive: true });
-    await writeFile(confPath, await generateConfContent(service), 'utf-8');
+    await writeFile(confPath, await generateConfContent(), 'utf-8');
 
     const current = await readConfig();
     const services = { ...(current.odoo_services ?? {}) };
@@ -296,6 +275,7 @@ export function ConfigureServiceScreen({
         case 'version':        setStep('version'); break;
         case 'enterprise':     void openEnterpriseEdit(); break;
         case 'custom_folders': void openCustomFoldersEdit(); break;
+        case 'open_conf':      openInEditor(initialService!.confPath); break;
       }
     }
   }, { isActive: step === 'edit_list' });
@@ -381,6 +361,7 @@ export function ConfigureServiceScreen({
     version:        selectedVersion?.branch ?? '—',
     enterprise:     hasEnterprise ? (enterpriseAction === 0 ? 'Oui' : 'Non') : 'Non disponible',
     custom_folders: selectedFolders.size > 0 ? [...selectedFolders].join(', ') : 'Aucun',
+    open_conf:      '↵ ouvrir dans $EDITOR',
   };
 
   // ── JSX ───────────────────────────────────────────────────────────────────
