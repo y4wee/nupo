@@ -11,7 +11,7 @@ interface StartServiceScreenProps {
   config: NupoConfig;
   leftWidth: number;
   onBack: () => void;
-  onServiceRunning: () => void;
+  onServiceRunning: (service: OdooServiceConfig) => void;
   onServiceStopped: () => void;
 }
 
@@ -105,11 +105,14 @@ export function StartServiceScreen({
   const [logs,         setLogs]         = useState<string[]>([]);
   const [exitCode,     setExitCode]     = useState<number | null>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [filterText,   setFilterText]   = useState('');
+  const [filterMode,   setFilterMode]   = useState(false);
 
   const childRef         = useRef<ChildProcess | null>(null);
   const mountedRef       = useRef(true);
   const activeServiceRef = useRef<OdooServiceConfig | null>(null);
   const userStoppedRef   = useRef(false);
+  const maxScrollRef     = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -121,9 +124,11 @@ export function StartServiceScreen({
   const service  = services[selected] as OdooServiceConfig | undefined;
   const warnNoDb = !!moduleName && !dbName;
 
-  // visibleLines limits the slice fed to the log box (scrolling window).
-  // The box itself uses flexGrow={1} + overflow="hidden" to fill remaining space.
-  const visibleLines = Math.max(5, rows);
+  // Fixed rows consumed outside the log box:
+  // App borders(2) + Header(2) + running view padY(2) + gaps(4)
+  // + header row(1) + urls box(4) + filter box(3) + controls(1) + log borders(2) = 21
+  const logBoxHeight = Math.max(5, rows - 19); // outer height incl. borders
+  const visibleLines = Math.max(3, logBoxHeight - 2); // inner content lines
 
   // ── Launch ────────────────────────────────────────────────────────────────
 
@@ -134,7 +139,7 @@ export function StartServiceScreen({
     setExitCode(null);
     setScrollOffset(0);
     setStep('running');
-    onServiceRunning();
+    onServiceRunning(service);
 
     const { cmd, args } = buildLaunchCmd(service, {
       shell: useShell, db: dbName, module: moduleName, stopAfterInit,
@@ -146,7 +151,7 @@ export function StartServiceScreen({
     const appendChunk = (chunk: Buffer) => {
       if (!mountedRef.current) return;
       const lines = chunk.toString().split('\n').filter(l => l.length > 0);
-      setLogs(prev => [...prev, ...lines].slice(-500));
+      setLogs(prev => [...prev, ...lines].slice(-(config.log_buffer_size ?? 500)));
     };
 
     proc.stdout?.on('data', appendChunk);
@@ -214,12 +219,23 @@ export function StartServiceScreen({
     if (key.ctrl && char === 'c') {
       userStoppedRef.current = true;
       childRef.current?.kill('SIGTERM');
+      return;
     }
-  }, { isActive: step === 'running' });
+    if (char === '/') {
+      setFilterMode(true);
+    }
+  }, { isActive: step === 'running' && !filterMode });
 
-  // Mouse wheel scroll — active only while running
+  // Filter mode input — Escape exits filter mode
+  useInput((_char, key) => {
+    if (key.escape) {
+      setFilterMode(false);
+    }
+  }, { isActive: step === 'running' && filterMode });
+
+  // Mouse wheel scroll — active only while running and not in filter mode
   useEffect(() => {
-    if (step !== 'running') return;
+    if (step !== 'running' || filterMode) return;
 
     // Enable mouse reporting (basic + SGR extended mode)
     process.stdout.write('\x1B[?1000h\x1B[?1006h');
@@ -228,14 +244,14 @@ export function StartServiceScreen({
       const str = data.toString();
       // SGR format: ESC[<64;x;yM = scroll up, ESC[<65;x;yM = scroll down
       if (/\x1B\[<6[45];/.test(str)) {
-        if (str.includes('\x1B[<64;')) setScrollOffset(p => p + 1);
+        if (str.includes('\x1B[<64;')) setScrollOffset(p => Math.min(maxScrollRef.current, p + 1));
         if (str.includes('\x1B[<65;')) setScrollOffset(p => Math.max(0, p - 1));
         return;
       }
       // X10 fallback: ESC[M + 3 bytes, button byte 96=scroll up, 97=scroll down
       if (str.startsWith('\x1B[M') && str.length >= 6) {
         const btn = str.charCodeAt(3) - 32;
-        if (btn === 64) setScrollOffset(p => p + 1);
+        if (btn === 64) setScrollOffset(p => Math.min(maxScrollRef.current, p + 1));
         if (btn === 65) setScrollOffset(p => Math.max(0, p - 1));
       }
     };
@@ -245,15 +261,22 @@ export function StartServiceScreen({
       process.stdout.write('\x1B[?1000l\x1B[?1006l');
       process.stdin.off('data', handleData);
     };
-  }, [step]);
+  }, [step, filterMode]);
+
+  // Reset scroll when filter changes
+  useEffect(() => { setScrollOffset(0); }, [filterText]);
 
   // ── Log window ────────────────────────────────────────────────────────────
 
-  const maxScroll   = Math.max(0, logs.length - visibleLines);
-  const offset      = Math.min(scrollOffset, maxScroll);
-  const end         = logs.length - offset;
+  const filteredLogs = filterText
+    ? logs.filter(l => l.toLowerCase().includes(filterText.toLowerCase()))
+    : logs;
+  const maxScroll       = Math.max(0, filteredLogs.length - visibleLines);
+  maxScrollRef.current  = maxScroll;
+  const offset          = Math.min(scrollOffset, maxScroll);
+  const end         = filteredLogs.length - offset;
   const start       = Math.max(0, end - visibleLines);
-  const visibleLogs = logs.slice(start, end);
+  const visibleLogs = filteredLogs.slice(start, end);
 
   // ── Render helpers ────────────────────────────────────────────────────────
 
@@ -272,26 +295,34 @@ export function StartServiceScreen({
   if (step === 'running' && activeService) {
     return (
       <Box flexGrow={1} flexDirection="column" paddingX={2} paddingY={1} gap={1}>
-        {/* Header */}
-        <Box flexDirection="row" gap={2}>
-          <Text color="cyan" bold>Démarrer Service Odoo</Text>
-          <Text color="yellow" bold>{activeService.name}</Text>
-          {exitCode === null ? (
-            <Text color="green">● en cours</Text>
-          ) : (
-            <Text color={exitCode === 0 ? 'green' : 'red'}>■ arrêté (code {exitCode})</Text>
-          )}
-          {scrollOffset > 0 && <Text color="gray" dimColor>↑ +{scrollOffset} lignes</Text>}
-        </Box>
-
         {/* URLs */}
         <Box borderStyle="round" borderColor="gray" paddingX={2} paddingY={0} flexDirection="column">
           <Text color="yellow">{`http://localhost:${httpPortForBranch(activeService.branch)}`}</Text>
           <Text color="yellow">{`http://localhost:${httpPortForBranch(activeService.branch)}/web/database/manager`}</Text>
         </Box>
 
+        {/* Filter */}
+        <Box borderStyle="round" borderColor={filterMode ? 'cyan' : 'gray'} paddingX={2} paddingY={0} flexDirection="row" gap={1}>
+          <Text color="gray" dimColor>{'filtre ›'}</Text>
+          {filterMode ? (
+            <TextInput
+              value={filterText}
+              onChange={setFilterText}
+              onSubmit={() => setFilterMode(false)}
+              placeholder="rechercher dans les logs…"
+            />
+          ) : (
+            <Text color={filterText ? 'white' : 'gray'} dimColor={!filterText}>
+              {filterText || 'appuyer sur / pour filtrer'}
+            </Text>
+          )}
+          {filterText !== '' && (
+            <Text color="gray" dimColor>({filteredLogs.length})</Text>
+          )}
+        </Box>
+
         {/* Logs */}
-        <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column" flexGrow={1} overflow="hidden">
+        <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column" height={logBoxHeight} overflow="hidden">
           {visibleLogs.length === 0 ? (
             <Text color="gray" dimColor>En attente des logs…</Text>
           ) : (
@@ -301,10 +332,12 @@ export function StartServiceScreen({
 
         {/* Controls */}
         <Box>
-          {exitCode === null ? (
-            <Text color="gray" dimColor>scroll défiler  ·  Ctrl+C arrêter le service</Text>
+          {filterMode ? (
+            <Text color="gray" dimColor>taper pour filtrer  ·  ↵ valider  ·  Échap quitter filtre</Text>
+          ) : exitCode === null ? (
+            <Text color="gray" dimColor>scroll défiler  ·  / filtrer  ·  Ctrl+C arrêter</Text>
           ) : (
-            <Text color="gray" dimColor>scroll défiler  ·  Échap retour</Text>
+            <Text color="gray" dimColor>scroll défiler  ·  / filtrer  ·  Échap retour</Text>
           )}
         </Box>
       </Box>

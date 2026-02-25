@@ -26,6 +26,7 @@ export interface NupoConfig {
   odoo_versions: Record<string, OdooVersion>;
   pending_installs?: Record<string, PendingInstall>;
   odoo_services?: Record<string, OdooServiceConfig>;
+  log_buffer_size?: number;
 }
 
 export const DEFAULT_CONFIG: NupoConfig = {
@@ -36,6 +37,7 @@ export const DEFAULT_CONFIG: NupoConfig = {
   odoo_versions: {},
   pending_installs: {},
   odoo_services: {},
+  log_buffer_size: 500,
 };
 
 export type Screen = 'home' | 'init' | 'odoo' | 'config';

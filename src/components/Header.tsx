@@ -1,7 +1,13 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { OdooServiceConfig } from '../types/index.js';
 
-export function Header() {
+interface HeaderProps {
+  activeService?: OdooServiceConfig | null;
+  serviceRunning?: boolean;
+}
+
+export function Header({ activeService, serviceRunning }: HeaderProps) {
   return (
     <Box
       paddingX={1}
@@ -11,13 +17,22 @@ export function Header() {
       borderLeft={false}
       borderRight={false}
       borderBottom={true}
+      flexDirection="row"
+      gap={1}
     >
-      <Text color="cyan" bold>
-        nupo
-      </Text>
-      <Text color="gray" dimColor>
-        {'  v0.1.0'}
-      </Text>
+      <Text color="cyan" bold>nupo</Text>
+      <Text color="white" dimColor>v0.1.0</Text>
+
+      {activeService && (
+        <>
+          <Text color="white" dimColor>·</Text>
+          <Text color="yellow" bold>{activeService.name}</Text>
+          <Text color="white" dimColor>{activeService.branch}</Text>
+          <Text color={serviceRunning ? 'green' : 'red'}>
+            {serviceRunning ? '● en cours' : '■ arrêté'}
+          </Text>
+        </>
+      )}
     </Box>
   );
 }

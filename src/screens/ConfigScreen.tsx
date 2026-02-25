@@ -16,6 +16,7 @@ type ConfigItem =
       label: string;
       description: string;
       validate?: (value: string) => Promise<string | null>;
+      transform?: (value: string) => unknown;
     }
   | {
       type: 'action';
@@ -36,6 +37,18 @@ const ITEMS: ConfigItem[] = [
       try { await access(v); return null; }
       catch { return `Chemin introuvable : ${v}`; }
     },
+  },
+  {
+    type: 'config',
+    key: 'log_buffer_size',
+    label: 'Buffer de logs',
+    description: 'Nombre de lignes de logs conservées en mémoire lors de l\'exécution d\'un service Odoo. Valeur recommandée : 500–5000.',
+    validate: async (value: string) => {
+      const n = parseInt(value.trim(), 10);
+      if (isNaN(n) || n < 100) return 'Doit être un entier ≥ 100.';
+      return null;
+    },
+    transform: (value: string) => parseInt(value.trim(), 10),
   },
   {
     type: 'action',
@@ -103,7 +116,8 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       return;
     }
 
-    await patchConfig({ [item.key]: trimmed });
+    const value = item.transform ? item.transform(trimmed) : trimmed;
+    await patchConfig({ [item.key]: value } as Partial<NupoConfig>);
     setEdit({ active: false });
     onSaved();
   };

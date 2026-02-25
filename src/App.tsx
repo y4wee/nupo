@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { Screen, MenuOption } from './types/index.js';
+import { Screen, MenuOption, OdooServiceConfig } from './types/index.js';
 import { useConfig } from './hooks/useConfig.js';
 import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { Header } from './components/Header.js';
@@ -20,7 +20,8 @@ export function App({ onExit }: AppProps) {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [confirmExit, setConfirmExit] = useState(false);
   const [confirmSelected, setConfirmSelected] = useState(1);
-  const [serviceRunning, setServiceRunning] = useState(false);
+  const [serviceRunning,  setServiceRunning]  = useState(false);
+  const [activeService,   setActiveService]   = useState<OdooServiceConfig | null>(null);
 
   const options = useMemo<MenuOption[]>(
     () =>
@@ -83,7 +84,7 @@ export function App({ onExit }: AppProps) {
   if (loading) {
     return (
       <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth} height={rows}>
-        <Header />
+        <Header activeService={activeService} serviceRunning={serviceRunning} />
         <Box paddingX={3} paddingY={2}>
           <Text color="gray" dimColor>
             Chargement…
@@ -95,7 +96,7 @@ export function App({ onExit }: AppProps) {
 
   return (
     <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth} height={rows}>
-      <Header />
+      <Header activeService={activeService} serviceRunning={serviceRunning} />
 
       {currentScreen === 'home' && (
         <HomeScreen
@@ -120,8 +121,8 @@ export function App({ onExit }: AppProps) {
           config={config}
           onBack={() => setCurrentScreen('home')}
           onConfigChange={() => void refresh()}
-          onServiceRunning={() => setServiceRunning(true)}
-          onServiceStopped={() => setServiceRunning(false)}
+          onServiceRunning={svc => { setServiceRunning(true); setActiveService(svc); }}
+          onServiceStopped={() => { setServiceRunning(false); setActiveService(null); }}
         />
       )}
 

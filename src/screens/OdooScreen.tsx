@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { InstallVersionScreen } from './InstallVersionScreen.js';
 import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
@@ -12,7 +12,7 @@ interface OdooScreenProps {
   config: NupoConfig;
   onBack: () => void;
   onConfigChange: () => void;
-  onServiceRunning: () => void;
+  onServiceRunning: (service: OdooServiceConfig) => void;
   onServiceStopped: () => void;
 }
 
