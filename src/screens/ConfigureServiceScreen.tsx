@@ -82,7 +82,7 @@ export function ConfigureServiceScreen({
   const [transitioning, setTransitioning] = useState(false);
   const [hasEnterprise, setHasEnterprise] = useState(false);
   const [enterpriseAction, setEnterpriseAction] = useState<0 | 1>(
-    initialService?.useEnterprise ? 0 : 1,
+    initialService ? (initialService.useEnterprise ? 0 : 1) : 0,
   );
 
   const [customFoldersList, setCustomFoldersList] = useState<string[]>([]);
