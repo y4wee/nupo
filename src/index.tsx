@@ -15,5 +15,5 @@ instance = render(<App onExit={handleExit} />, {
 });
 
 process.stdout.on('resize', () => {
-  instance.clear();
+  process.stdout.write('\x1B[2J\x1B[H'); // clear full screen + cursor to top
 });
