@@ -200,9 +200,6 @@ export function StartServiceScreen({
   }, { isActive: step === 'input_module' });
 
   useInput((char, key) => {
-    if (key.upArrow)   setScrollOffset(p => p + 1);
-    if (key.downArrow) setScrollOffset(p => Math.max(0, p - 1));
-
     if (exitCode !== null) {
       if (key.escape) {
         setStep('args_list');
@@ -212,12 +209,41 @@ export function StartServiceScreen({
       }
       return;
     }
-
     if (key.ctrl && char === 'c') {
       userStoppedRef.current = true;
       childRef.current?.kill('SIGTERM');
     }
   }, { isActive: step === 'running' });
+
+  // Mouse wheel scroll — active only while running
+  useEffect(() => {
+    if (step !== 'running') return;
+
+    // Enable mouse reporting (basic + SGR extended mode)
+    process.stdout.write('\x1B[?1000h\x1B[?1006h');
+
+    const handleData = (data: Buffer) => {
+      const str = data.toString();
+      // SGR format: ESC[<64;x;yM = scroll up, ESC[<65;x;yM = scroll down
+      if (/\x1B\[<6[45];/.test(str)) {
+        if (str.includes('\x1B[<64;')) setScrollOffset(p => p + 1);
+        if (str.includes('\x1B[<65;')) setScrollOffset(p => Math.max(0, p - 1));
+        return;
+      }
+      // X10 fallback: ESC[M + 3 bytes, button byte 96=scroll up, 97=scroll down
+      if (str.startsWith('\x1B[M') && str.length >= 6) {
+        const btn = str.charCodeAt(3) - 32;
+        if (btn === 64) setScrollOffset(p => p + 1);
+        if (btn === 65) setScrollOffset(p => Math.max(0, p - 1));
+      }
+    };
+
+    process.stdin.on('data', handleData);
+    return () => {
+      process.stdout.write('\x1B[?1000l\x1B[?1006l');
+      process.stdin.off('data', handleData);
+    };
+  }, [step]);
 
   // ── Log window ────────────────────────────────────────────────────────────
 
@@ -274,9 +300,9 @@ export function StartServiceScreen({
         {/* Controls */}
         <Box>
           {exitCode === null ? (
-            <Text color="gray" dimColor>↑↓ défiler  ·  Ctrl+C arrêter le service</Text>
+            <Text color="gray" dimColor>scroll défiler  ·  Ctrl+C arrêter le service</Text>
           ) : (
-            <Text color="gray" dimColor>↑↓ défiler  ·  Échap retour</Text>
+            <Text color="gray" dimColor>scroll défiler  ·  Échap retour</Text>
           )}
         </Box>
       </Box>
