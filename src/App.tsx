@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { Screen, MenuOption, OdooServiceConfig } from './types/index.js';
 import { useConfig } from './hooks/useConfig.js';
@@ -22,6 +22,11 @@ export function App({ onExit }: AppProps) {
   const [confirmSelected, setConfirmSelected] = useState(1);
   const [serviceRunning,  setServiceRunning]  = useState(false);
   const [activeService,   setActiveService]   = useState<OdooServiceConfig | null>(null);
+
+  // Reposition to top-left whenever the box height changes (service start/stop)
+  useEffect(() => {
+    process.stdout.write('\x1B[2J\x1B[H');
+  }, [serviceRunning]);
 
   const options = useMemo<MenuOption[]>(
     () =>
