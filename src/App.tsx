@@ -83,7 +83,7 @@ export function App({ onExit }: AppProps) {
 
   if (loading) {
     return (
-      <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth} height={rows}>
+      <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth}>
         <Header activeService={activeService} serviceRunning={serviceRunning} />
         <Box paddingX={3} paddingY={2}>
           <Text color="gray" dimColor>
@@ -95,7 +95,7 @@ export function App({ onExit }: AppProps) {
   }
 
   return (
-    <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth} height={rows}>
+    <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth} height={serviceRunning ? rows : undefined}>
       <Header activeService={activeService} serviceRunning={serviceRunning} />
 
       {currentScreen === 'home' && (
