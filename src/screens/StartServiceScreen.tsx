@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
+import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
 import { NupoConfig, OdooServiceConfig } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
-import { runInTerminal } from '../services/system.js';
 
 interface StartServiceScreenProps {
   config: NupoConfig;
@@ -12,7 +12,7 @@ interface StartServiceScreenProps {
   onBack: () => void;
 }
 
-type Step = 'select' | 'args_list' | 'input_db' | 'input_module' | 'confirm';
+type Step = 'select' | 'args_list' | 'input_db' | 'input_module' | 'running';
 
 const ARGS_ITEMS = [
   { key: 'shell'           as const, label: 'shell',             type: 'toggle' as const },
@@ -21,6 +21,8 @@ const ARGS_ITEMS = [
   { key: 'stop_after_init' as const, label: '--stop-after-init', type: 'toggle' as const },
   { key: 'launch'          as const, label: 'Lancer →',          type: 'action' as const },
 ];
+
+const VISIBLE_LINES = 20;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,8 +37,8 @@ function buildLaunchCmd(
   service: OdooServiceConfig,
   opts: { shell: boolean; db: string; module: string; stopAfterInit: boolean },
 ): { cmd: string; args: string[] } {
-  const python   = join(service.versionPath, 'venv', 'bin', 'python3');
-  const odooBin  = join(service.versionPath, 'community', 'odoo-bin');
+  const python  = join(service.versionPath, 'venv', 'bin', 'python3');
+  const odooBin = join(service.versionPath, 'community', 'odoo-bin');
   const args: string[] = [odooBin];
 
   if (opts.shell) args.push('shell');
@@ -49,13 +51,19 @@ function buildLaunchCmd(
   return { cmd: python, args };
 }
 
+function logColor(line: string): string {
+  if (/\bCRITICAL\b|\bERROR\b/.test(line)) return 'red';
+  if (/\bWARNING\b/.test(line))             return 'yellow';
+  return 'gray';
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceScreenProps) {
   const services = Object.values(config.odoo_services ?? {});
 
-  const [step,       setStep]      = useState<Step>('select');
-  const [selected,   setSelected]  = useState(0);
+  const [step,       setStep]       = useState<Step>('select');
+  const [selected,   setSelected]   = useState(0);
   const [argsCursor, setArgsCursor] = useState(0);
 
   const [useShell,      setUseShell]      = useState(false);
@@ -64,10 +72,57 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
   const [stopAfterInit, setStopAfterInit] = useState(false);
   const [inputValue,    setInputValue]    = useState('');
 
+  const [logs,         setLogs]         = useState<string[]>([]);
+  const [exitCode,     setExitCode]     = useState<number | null>(null);
+  const [scrollOffset, setScrollOffset] = useState(0);
+
+  const childRef         = useRef<ChildProcess | null>(null);
+  const mountedRef       = useRef(true);
+  const activeServiceRef = useRef<OdooServiceConfig | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      childRef.current?.kill('SIGTERM');
+    };
+  }, []);
+
   const service = services[selected] as OdooServiceConfig | undefined;
   const warnNoDb = !!moduleName && !dbName;
 
-  // ── select ────────────────────────────────────────────────────────────────
+  // ── Launch ────────────────────────────────────────────────────────────────
+
+  const launchService = () => {
+    if (!service) return;
+    activeServiceRef.current = service;
+    setLogs([]);
+    setExitCode(null);
+    setScrollOffset(0);
+    setStep('running');
+
+    const { cmd, args } = buildLaunchCmd(service, {
+      shell: useShell, db: dbName, module: moduleName, stopAfterInit,
+    });
+
+    const proc = spawn(cmd, args);
+    childRef.current = proc;
+
+    const appendChunk = (chunk: Buffer) => {
+      if (!mountedRef.current) return;
+      const lines = chunk.toString().split('\n').filter(l => l.length > 0);
+      setLogs(prev => [...prev, ...lines].slice(-500));
+    };
+
+    proc.stdout?.on('data', appendChunk);
+    proc.stderr?.on('data', appendChunk);
+    proc.on('close', code => {
+      childRef.current = null;
+      if (mountedRef.current) setExitCode(code ?? -1);
+    });
+  };
+
+  // ── Input hooks ───────────────────────────────────────────────────────────
 
   useInput((_char, key) => {
     if (key.escape) { onBack(); return; }
@@ -77,51 +132,58 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
     if (key.return && service) setStep('args_list');
   }, { isActive: step === 'select' });
 
-  // ── args_list ─────────────────────────────────────────────────────────────
-
   useInput((char, key) => {
     if (key.escape) { setStep('select'); return; }
     if (key.upArrow)   setArgsCursor(p => Math.max(0, p - 1));
     if (key.downArrow) setArgsCursor(p => Math.min(ARGS_ITEMS.length - 1, p + 1));
-
-    const activated = key.return || char === ' ';
-    if (activated) {
+    if (key.return || char === ' ') {
       const item = ARGS_ITEMS[argsCursor]!;
       switch (item.key) {
         case 'shell':           setUseShell(p => !p); break;
         case 'stop_after_init': setStopAfterInit(p => !p); break;
         case 'db':     setInputValue(dbName);     setStep('input_db');     break;
         case 'module': setInputValue(moduleName); setStep('input_module'); break;
-        case 'launch': setStep('confirm'); break;
+        case 'launch': launchService(); break;
       }
     }
   }, { isActive: step === 'args_list' });
-
-  // ── input_db ──────────────────────────────────────────────────────────────
 
   useInput((_char, key) => {
     if (key.escape) setStep('args_list');
   }, { isActive: step === 'input_db' });
 
-  // ── input_module ──────────────────────────────────────────────────────────
-
   useInput((_char, key) => {
     if (key.escape) setStep('args_list');
   }, { isActive: step === 'input_module' });
 
-  // ── confirm ───────────────────────────────────────────────────────────────
+  useInput((char, key) => {
+    if (key.upArrow)   setScrollOffset(p => p + 1);
+    if (key.downArrow) setScrollOffset(p => Math.max(0, p - 1));
 
-  useInput((_char, key) => {
-    if (key.escape) { setStep('args_list'); return; }
-    if (key.return && service) {
-      const { cmd, args } = buildLaunchCmd(service, {
-        shell: useShell, db: dbName, module: moduleName, stopAfterInit,
-      });
-      runInTerminal(cmd, args);
+    if (exitCode !== null) {
+      if (key.escape) {
+        setStep('args_list');
+        setLogs([]);
+        setExitCode(null);
+        setScrollOffset(0);
+      }
+      return;
     }
-  }, { isActive: step === 'confirm' });
 
-  // ── render helpers ────────────────────────────────────────────────────────
+    if (char === 'q' || (key.ctrl && char === 'c')) {
+      childRef.current?.kill('SIGTERM');
+    }
+  }, { isActive: step === 'running' });
+
+  // ── Log window ────────────────────────────────────────────────────────────
+
+  const maxScroll  = Math.max(0, logs.length - VISIBLE_LINES);
+  const offset     = Math.min(scrollOffset, maxScroll);
+  const end        = logs.length - offset;
+  const start      = Math.max(0, end - VISIBLE_LINES);
+  const visibleLogs = logs.slice(start, end);
+
+  // ── Render helpers ────────────────────────────────────────────────────────
 
   const argIsSet: Record<string, boolean> = {
     shell:           useShell,
@@ -130,14 +192,7 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
     stop_after_init: stopAfterInit,
   };
 
-  const argDisplay: Record<string, string> = {
-    db:     dbName,
-    module: moduleName,
-  };
-
-  const launchCmd = step === 'confirm' && service
-    ? buildLaunchCmd(service, { shell: useShell, db: dbName, module: moduleName, stopAfterInit })
-    : null;
+  const argDisplay: Record<string, string> = { db: dbName, module: moduleName };
 
   // ── JSX ───────────────────────────────────────────────────────────────────
 
@@ -227,9 +282,7 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
               </Box>
             )}
             <Box marginTop={1}>
-              <Text color="gray" dimColor>
-                ↑↓ naviguer  ·  ↵/Espace basculer  ·  Échap retour
-              </Text>
+              <Text color="gray" dimColor>↑↓ naviguer  ·  ↵/Espace basculer  ·  Échap retour</Text>
             </Box>
           </Box>
         )}
@@ -268,21 +321,45 @@ export function StartServiceScreen({ config, leftWidth, onBack }: StartServiceSc
           </Box>
         )}
 
-        {/* ── confirm ── */}
-        {step === 'confirm' && launchCmd && (
-          <Box flexDirection="column" gap={1} marginTop={1}>
-            <Text color="white">Commande de lancement :</Text>
-            <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
-              <Text color="cyan">{launchCmd.cmd}</Text>
-              {launchCmd.args.map((arg, i) => (
-                <Text key={i} color="cyan" dimColor={i > 0}>{'  ' + arg}</Text>
-              ))}
+        {/* ── running ── */}
+        {step === 'running' && (
+          <Box flexDirection="column" gap={0} marginTop={1}>
+            <Box flexDirection="row" gap={2}>
+              <Text color="white" bold>{activeServiceRef.current?.name}</Text>
+              {exitCode === null ? (
+                <Text color="green">● en cours</Text>
+              ) : (
+                <Text color={exitCode === 0 ? 'green' : 'red'}>
+                  ■ arrêté (code {exitCode})
+                </Text>
+              )}
+              {scrollOffset > 0 && (
+                <Text color="gray" dimColor>↑ +{scrollOffset} lignes</Text>
+              )}
             </Box>
-            {warnNoDb && (
-              <Text color="yellow">⚠  -u nécessite un -d (base de données non définie)</Text>
-            )}
+
+            <Box
+              borderStyle="round"
+              borderColor="gray"
+              flexDirection="column"
+              paddingX={1}
+              marginTop={1}
+            >
+              {visibleLogs.length === 0 ? (
+                <Text color="gray" dimColor>En attente des logs…</Text>
+              ) : (
+                visibleLogs.map((line, i) => (
+                  <Text key={i} color={logColor(line)} wrap="truncate">{line}</Text>
+                ))
+              )}
+            </Box>
+
             <Box marginTop={1}>
-              <Text color="gray" dimColor>↵ lancer  ·  Échap retour</Text>
+              {exitCode === null ? (
+                <Text color="gray" dimColor>↑↓ défiler  ·  q arrêter le service</Text>
+              ) : (
+                <Text color="gray" dimColor>↑↓ défiler  ·  Échap retour</Text>
+              )}
             </Box>
           </Box>
         )}
