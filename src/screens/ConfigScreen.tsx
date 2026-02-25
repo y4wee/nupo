@@ -3,37 +3,51 @@ import { Box, Text, useInput } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
 import { NupoConfig } from '../types/index.js';
-import { patchConfig } from '../services/config.js';
+import { patchConfig, ensureBaseConf, getBaseConfPath } from '../services/config.js';
+import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 
-interface ConfigParam {
-  key: keyof NupoConfig;
-  label: string;
-  description: string;
-  validate?: (value: string) => Promise<string | null>; // null = ok, string = error message
-}
+// ── Item types ────────────────────────────────────────────────────────────────
 
-const PARAMS: ConfigParam[] = [
+type ConfigItem =
+  | {
+      type: 'config';
+      key: keyof NupoConfig;
+      label: string;
+      description: string;
+      validate?: (value: string) => Promise<string | null>;
+    }
+  | {
+      type: 'action';
+      id: string;
+      label: string;
+      description: string;
+    };
+
+const ITEMS: ConfigItem[] = [
   {
+    type: 'config',
     key: 'odoo_path_repo',
     label: 'Chemin du dépôt Odoo',
     description: 'Chemin absolu vers le dépôt Odoo sur ce système.',
     validate: async (value: string) => {
       const v = value.trim();
       if (!v) return 'Le chemin ne peut pas être vide.';
-      try {
-        await access(v);
-        return null;
-      } catch {
-        return `Chemin introuvable : ${v}`;
-      }
+      try { await access(v); return null; }
+      catch { return `Chemin introuvable : ${v}`; }
     },
+  },
+  {
+    type: 'action',
+    id: 'open_base_conf',
+    label: 'Conf Odoo de base',
+    description: `Template de configuration utilisé lors de la création des services Odoo.\nFichier : ${getBaseConfPath()}`,
   },
 ];
 
 type EditState =
   | { active: false }
-  | { active: true; paramIndex: number; value: string; error: string | null; saving: boolean };
+  | { active: true; itemIndex: number; value: string; error: string | null; saving: boolean };
 
 interface ConfigScreenProps {
   config: NupoConfig;
@@ -52,124 +66,114 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
         if (key.escape) setEdit({ active: false });
         return;
       }
-      if (key.upArrow) setSelected(prev => (prev - 1 + PARAMS.length) % PARAMS.length);
-      if (key.downArrow) setSelected(prev => (prev + 1) % PARAMS.length);
+      if (key.upArrow)   setSelected(prev => (prev - 1 + ITEMS.length) % ITEMS.length);
+      if (key.downArrow) setSelected(prev => (prev + 1) % ITEMS.length);
       if (key.return) {
-        const param = PARAMS[selected]!;
-        setEdit({
-          active: true,
-          paramIndex: selected,
-          value: String(config[param.key] ?? ''),
-          error: null,
-          saving: false,
-        });
+        const item = ITEMS[selected]!;
+        if (item.type === 'config') {
+          setEdit({
+            active: true,
+            itemIndex: selected,
+            value: String(config[item.key] ?? ''),
+            error: null,
+            saving: false,
+          });
+        } else if (item.type === 'action' && item.id === 'open_base_conf') {
+          void ensureBaseConf().then(() => {
+            openInEditor(getBaseConfPath());
+          });
+        }
       }
       if (key.escape) onBack();
     },
-    { isActive: !(edit.active && edit.saving) },
+    { isActive: !(edit.active && (edit as { saving?: boolean }).saving) },
   );
 
   const handleSubmit = async (inputValue: string) => {
     if (!edit.active) return;
-    const param = PARAMS[edit.paramIndex]!;
+    const item = ITEMS[edit.itemIndex]!;
+    if (item.type !== 'config') return;
     const trimmed = inputValue.trim();
 
     setEdit(prev => (prev.active ? { ...prev, saving: true, error: null } : prev));
 
-    const error = param.validate ? await param.validate(trimmed) : null;
-
+    const error = item.validate ? await item.validate(trimmed) : null;
     if (error) {
       setEdit(prev => (prev.active ? { ...prev, saving: false, error } : prev));
       return;
     }
 
-    await patchConfig({ [param.key]: trimmed });
+    await patchConfig({ [item.key]: trimmed });
     setEdit({ active: false });
     onSaved();
   };
 
-  const currentParam = PARAMS[selected]!;
+  const currentItem = ITEMS[selected]!;
 
   return (
     <Box flexDirection="row">
       <LeftPanel width={leftWidth} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color="cyan" bold>
-          Configuration
-        </Text>
+        <Text color="cyan" bold>Configuration</Text>
 
-        {/* Description de la sélection courante */}
+        {/* Description */}
         {!edit.active && (
           <Box borderStyle="round" borderColor="gray" paddingX={1} paddingY={0}>
-            <Text color="gray" wrap="wrap">
-              {currentParam.description}
-            </Text>
+            <Text color="gray" wrap="wrap">{currentItem.description}</Text>
           </Box>
         )}
 
-        {/* Liste des paramètres */}
+        {/* Liste */}
         {!edit.active && (
           <Box flexDirection="column" marginTop={1} gap={0}>
-            {PARAMS.map((param, i) => {
-              const isSelected = i === selected;
-              const value = String(config[param.key] ?? '');
+            {ITEMS.map((item, i) => {
+              const isSel = i === selected;
+              const value = item.type === 'config'
+                ? (String(config[item.key] ?? '') || '(non défini)')
+                : '↵ ouvrir dans $EDITOR';
               return (
-                <Box key={param.key} flexDirection="row" gap={1}>
+                <Box key={item.type === 'config' ? item.key : item.id} flexDirection="row" gap={1}>
                   <Text
-                    color={isSelected ? 'black' : 'white'}
-                    backgroundColor={isSelected ? 'cyan' : undefined}
-                    bold={isSelected}
+                    color={isSel ? 'black' : 'white'}
+                    backgroundColor={isSel ? 'cyan' : undefined}
+                    bold={isSel}
                   >
-                    {` ${isSelected ? '▶' : ' '} ${param.label}`}
+                    {` ${isSel ? '▶' : ' '} ${item.label}`}
                   </Text>
-                  <Text color="gray" dimColor>
-                    {value || '(non défini)'}
-                  </Text>
+                  <Text color="gray" dimColor>{value}</Text>
                 </Box>
               );
             })}
           </Box>
         )}
 
-        {/* Zone d'édition */}
+        {/* Édition */}
         {edit.active && (
           <Box flexDirection="column" gap={1} marginTop={1}>
-            <Text color="white">{PARAMS[edit.paramIndex]!.label} :</Text>
+            <Text color="white">
+              {(ITEMS[edit.itemIndex] as Extract<ConfigItem, { type: 'config' }>).label} :
+            </Text>
             <Box>
-              <Text color="gray" dimColor>
-                {'› '}
-              </Text>
+              <Text color="gray" dimColor>{'› '}</Text>
               <PathInput
                 value={edit.value}
-                onChange={value =>
-                  setEdit(prev => (prev.active ? { ...prev, value, error: null } : prev))
-                }
+                onChange={value => setEdit(prev => (prev.active ? { ...prev, value, error: null } : prev))}
                 onSubmit={val => void handleSubmit(val)}
-                focus={!edit.saving}
+                focus={!(edit as { saving?: boolean }).saving}
               />
             </Box>
-            {edit.error && (
-              <Text color="red">{edit.error}</Text>
-            )}
-            {edit.saving && (
-              <Text color="yellow" dimColor>
-                Sauvegarde…
-              </Text>
-            )}
+            {edit.error   && <Text color="red">{edit.error}</Text>}
+            {(edit as { saving?: boolean }).saving && <Text color="yellow" dimColor>Sauvegarde…</Text>}
           </Box>
         )}
 
         {/* Aide */}
         <Box marginTop={1}>
           {edit.active ? (
-            <Text color="gray" dimColor>
-              {'↵ sauvegarder  ·  Échap annuler'}
-            </Text>
+            <Text color="gray" dimColor>↵ sauvegarder  ·  Échap annuler</Text>
           ) : (
-            <Text color="gray" dimColor>
-              {'↑↓ naviguer  ·  ↵ modifier  ·  Échap retour'}
-            </Text>
+            <Text color="gray" dimColor>↑↓ naviguer  ·  ↵ modifier  ·  Échap retour</Text>
           )}
         </Box>
       </Box>

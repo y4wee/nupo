@@ -4,7 +4,7 @@ import TextInput from 'ink-text-input';
 import { readdir, stat, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { NupoConfig, OdooVersion, OdooServiceConfig } from '../types/index.js';
-import { readConfig, writeConfig } from '../services/config.js';
+import { readConfig, writeConfig, readBaseConf } from '../services/config.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 
 interface ConfigureServiceScreenProps {
@@ -39,23 +39,31 @@ async function loadCustomFolders(versionPath: string): Promise<string[]> {
   } catch { return []; }
 }
 
-function generateConfContent(service: OdooServiceConfig): string {
+function buildAddonsPaths(service: OdooServiceConfig): string[] {
   const paths: string[] = [join(service.versionPath, 'community', 'addons')];
   if (service.useEnterprise) paths.push(join(service.versionPath, 'enterprise'));
   for (const f of service.customFolders) paths.push(join(service.versionPath, 'custom', f));
-  return [
-    '[options]',
-    `addons_path = ${paths.join(',')}`,
-    'admin_passwd = admin',
-    'db_host = False',
-    'db_port = False',
-    'db_user = False',
-    'db_password = False',
-    'http_port = 8069',
-    'logfile = False',
-    'log_level = info',
-    '',
-  ].join('\n');
+  return paths;
+}
+
+/** Inject or replace addons_path in an existing Odoo INI conf string. */
+function injectAddonsPath(baseConf: string, paths: string[]): string {
+  const line = `addons_path = ${paths.join(',')}`;
+  const lines = baseConf.split('\n');
+  const idx = lines.findIndex(l => l.trimStart().startsWith('addons_path'));
+  if (idx >= 0) {
+    lines[idx] = line;
+  } else {
+    const optIdx = lines.findIndex(l => l.trim() === '[options]');
+    if (optIdx >= 0) lines.splice(optIdx + 1, 0, line);
+    else lines.unshift('[options]', line);
+  }
+  return lines.join('\n');
+}
+
+async function generateConfContent(service: OdooServiceConfig): Promise<string> {
+  const baseConf = await readBaseConf();
+  return injectAddonsPath(baseConf, buildAddonsPaths(service));
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -132,7 +140,7 @@ export function ConfigureServiceScreen({
       confPath,
     };
     await mkdir(join(opts.version.path, 'config'), { recursive: true });
-    await writeFile(confPath, generateConfContent(service), 'utf-8');
+    await writeFile(confPath, await generateConfContent(service), 'utf-8');
 
     const current = await readConfig();
     const services = { ...(current.odoo_services ?? {}) };
