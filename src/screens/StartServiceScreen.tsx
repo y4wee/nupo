@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
-import { NupoConfig, OdooServiceConfig } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 
@@ -346,10 +346,10 @@ export function StartServiceScreen({
 
   return (
     <Box flexDirection="row" flexGrow={1}>
-      <LeftPanel width={leftWidth} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color="cyan" bold>Démarrer Service Odoo</Text>
+        <Text color={getPrimaryColor(config)} bold>Démarrer Service Odoo</Text>
 
         {/* ── select ── */}
         {step === 'select' && services.length === 0 && (

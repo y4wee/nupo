@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { readdir, stat, mkdir, writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
-import { NupoConfig, OdooVersion, OdooServiceConfig } from '../types/index.js';
+import { NupoConfig, OdooVersion, OdooServiceConfig, getPrimaryColor } from '../types/index.js';
 import { readConfig, writeConfig, readBaseConf } from '../services/config.js';
 import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -405,10 +405,10 @@ export function ConfigureServiceScreen({
 
   return (
     <Box flexDirection="row" flexGrow={1}>
-      <LeftPanel width={leftWidth} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color="cyan" bold>
+        <Text color={getPrimaryColor(config)} bold>
           {isEditing ? `Modifier : ${initialService!.name}` : 'Nouveau service'}
         </Text>
 
@@ -465,7 +465,7 @@ export function ConfigureServiceScreen({
           <Box flexDirection="column" gap={1} marginTop={1}>
             {!isEditing && (
               <Text color="white">
-                {'Service : '}<Text color="cyan" bold>{confirmedName}</Text>
+                {'Service : '}<Text color={getPrimaryColor(config)} bold>{confirmedName}</Text>
               </Text>
             )}
             <Text color="white">Version Odoo :</Text>
@@ -493,7 +493,7 @@ export function ConfigureServiceScreen({
         {step === 'enterprise' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="white">
-              {'Version : '}<Text color="cyan">{selectedVersion?.branch}</Text>
+              {'Version : '}<Text color={getPrimaryColor(config)}>{selectedVersion?.branch}</Text>
             </Text>
             {!hasEnterprise ? (
               <>

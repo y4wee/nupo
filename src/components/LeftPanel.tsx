@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 
-const LOGO = ` 
+const LOGO = `
   ███
  █   █
-█     █     
+█     █
 █     █     █
       █     █
        █   █
@@ -16,9 +16,10 @@ const WELCOME = "Bienvenue\nNuprodien";
 interface LeftPanelProps {
 	width: number;
 	serviceLabel?: string;
+	primaryColor?: string;
 }
 
-export function LeftPanel({ width, serviceLabel }: LeftPanelProps) {
+export function LeftPanel({ width, serviceLabel, primaryColor = '#9F0C58' }: LeftPanelProps) {
 	const [typedText, setTypedText] = useState("");
 
 	useEffect(() => {
@@ -48,11 +49,11 @@ export function LeftPanel({ width, serviceLabel }: LeftPanelProps) {
 			borderRight={true}
 		>
 			<Box flexDirection="column" alignItems="center">
-				<Text color="cyan">{LOGO}</Text>
+				<Text color={primaryColor}>{LOGO}</Text>
 			</Box>
-			<Box flexDirection="column">
+			<Box flexDirection="column" alignItems="center">
 				<Text color="white">{typedText.split("\n")[0] ?? ""}</Text>
-				<Text color="cyan" bold>
+				<Text color={primaryColor} bold>
 					{typedText.split("\n")[1] ?? ""}
 				</Text>
 			</Box>

@@ -5,9 +5,10 @@ import { OdooServiceConfig } from '../types/index.js';
 interface HeaderProps {
   activeService?: OdooServiceConfig | null;
   serviceRunning?: boolean;
+  primaryColor?: string;
 }
 
-export function Header({ activeService, serviceRunning }: HeaderProps) {
+export function Header({ activeService, serviceRunning, primaryColor = '#9F0C58' }: HeaderProps) {
   return (
     <Box
       paddingX={1}
@@ -20,7 +21,7 @@ export function Header({ activeService, serviceRunning }: HeaderProps) {
       flexDirection="row"
       gap={1}
     >
-      <Text color="cyan" bold>nupo</Text>
+      <Text color={primaryColor} bold>nupo</Text>
       <Text color="white" dimColor>v0.1.0</Text>
 
       {activeService && (

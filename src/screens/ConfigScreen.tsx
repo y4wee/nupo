@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
-import { NupoConfig } from '../types/index.js';
+import { NupoConfig, getPrimaryColor } from '../types/index.js';
 import { patchConfig, ensureBaseConf, getBaseConfPath } from '../services/config.js';
 import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -49,6 +49,16 @@ const ITEMS: ConfigItem[] = [
       return null;
     },
     transform: (value: string) => parseInt(value.trim(), 10),
+  },
+  {
+    type: 'config',
+    key: 'primary_color',
+    label: 'Couleur principale',
+    description: 'Couleur principale de l\'interface nupo. Format hexadécimal : #RRGGBB.',
+    validate: async (value: string) => {
+      if (!/^#[0-9a-fA-F]{6}$/.test(value.trim())) return 'Format invalide. Exemple : #9F0C58';
+      return null;
+    },
   },
   {
     type: 'action',
@@ -126,10 +136,10 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
 
   return (
     <Box flexDirection="row">
-      <LeftPanel width={leftWidth} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color="cyan" bold>Configuration</Text>
+        <Text color={getPrimaryColor(config)} bold>Configuration</Text>
 
         {/* Description */}
         {!edit.active && (

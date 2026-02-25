@@ -8,10 +8,11 @@ interface HomeScreenProps {
   leftWidth: number;
   options: MenuOption[];
   isActive: boolean;
+  primaryColor?: string;
   onNavigate: (screen: Screen) => void;
 }
 
-export function HomeScreen({ leftWidth, options, isActive, onNavigate }: HomeScreenProps) {
+export function HomeScreen({ leftWidth, options, isActive, primaryColor, onNavigate }: HomeScreenProps) {
   const [selected, setSelected] = useState(0);
 
   useInput(
@@ -34,7 +35,7 @@ export function HomeScreen({ leftWidth, options, isActive, onNavigate }: HomeScr
 
   return (
     <Box flexDirection="row">
-      <LeftPanel width={leftWidth} />
+      <LeftPanel width={leftWidth} primaryColor={primaryColor} />
       <OptionsPanel options={options} selected={safeSelected} />
     </Box>
   );

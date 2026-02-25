@@ -27,6 +27,7 @@ export interface NupoConfig {
   pending_installs?: Record<string, PendingInstall>;
   odoo_services?: Record<string, OdooServiceConfig>;
   log_buffer_size?: number;
+  primary_color?: string;
 }
 
 export const DEFAULT_CONFIG: NupoConfig = {
@@ -38,7 +39,12 @@ export const DEFAULT_CONFIG: NupoConfig = {
   pending_installs: {},
   odoo_services: {},
   log_buffer_size: 500,
+  primary_color: '#9F0C58',
 };
+
+export function getPrimaryColor(config?: NupoConfig | null): string {
+  return config?.primary_color ?? '#9F0C58';
+}
 
 export type Screen = 'home' | 'init' | 'odoo' | 'config';
 export type StepStatus = 'pending' | 'running' | 'success' | 'error';

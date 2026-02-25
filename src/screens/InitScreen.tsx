@@ -2,7 +2,7 @@ import React, { useReducer, useEffect, useState, useCallback, useRef } from 'rea
 import { Box, Text } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
-import { InitStep, InitStepId, StepStatus, NupoConfig } from '../types/index.js';
+import { InitStep, InitStepId, StepStatus, NupoConfig, getPrimaryColor } from '../types/index.js';
 import { checkPython, checkPip } from '../services/checks.js';
 import { patchConfig } from '../services/config.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -159,10 +159,10 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Box flexDirection="row" flexGrow={1}>
-        <LeftPanel width={leftWidth} />
+        <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
 
         <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-          <Text color="cyan" bold>
+          <Text color={getPrimaryColor(config)} bold>
             Initialisation
           </Text>
 

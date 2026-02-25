@@ -4,7 +4,7 @@ import TextInput from 'ink-text-input';
 import { mkdir, stat } from 'fs/promises';
 import { join } from 'path';
 import {
-  InstallStep, InstallStepId, StepStatus, NupoConfig, PendingInstall,
+  InstallStep, InstallStepId, StepStatus, NupoConfig, PendingInstall, getPrimaryColor,
 } from '../types/index.js';
 import {
   GitProgress,
@@ -403,10 +403,10 @@ export function InstallVersionScreen({
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Box flexDirection="row" flexGrow={1}>
-        <LeftPanel width={leftWidth} />
+        <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
 
         <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-          <Text color="cyan" bold>Installer une version</Text>
+          <Text color={getPrimaryColor(config)} bold>Installer une version</Text>
 
           {/* Branch input + pending installs */}
           {currentStepIndex === 0 && (
@@ -473,7 +473,7 @@ export function InstallVersionScreen({
             <Box marginTop={1} flexDirection="column" gap={0}>
               <Text color="gray">
                 {'Installation de '}
-                <Text color="cyan" bold>{branchName}</Text>
+                <Text color={getPrimaryColor(config)} bold>{branchName}</Text>
                 {'…'}
               </Text>
               {isPipStep && pipOutput !== '' && (
@@ -510,7 +510,7 @@ export function InstallVersionScreen({
             <Box flexDirection="column" marginTop={1} gap={0}>
               <Text color="gray">
                 {'Clonage '}
-                <Text color="cyan" bold>{cloneLabel}</Text>
+                <Text color={getPrimaryColor(config)} bold>{cloneLabel}</Text>
                 {` → ${join(versionPath, cloneLabel)}`}
               </Text>
               <Box marginTop={1} flexDirection="column" gap={0}>
@@ -522,7 +522,7 @@ export function InstallVersionScreen({
                         {PHASE_LABEL[cloneProgress.phase]}
                       </Text>
                       {cloneProgress.speed && (
-                        <Text color="cyan" dimColor>{cloneProgress.speed}</Text>
+                        <Text color={getPrimaryColor(config)} dimColor>{cloneProgress.speed}</Text>
                       )}
                     </Box>
                   </>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooServiceConfig } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { ConfigureServiceScreen } from './ConfigureServiceScreen.js';
 
@@ -46,10 +46,10 @@ export function OdooServiceScreen({ config, leftWidth, onBack, onConfigChange }:
 
   return (
     <Box flexDirection="row" flexGrow={1}>
-      <LeftPanel width={leftWidth} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color="cyan" bold>Configurer Service Odoo</Text>
+        <Text color={getPrimaryColor(config)} bold>Configurer Service Odoo</Text>
 
         <Box flexDirection="column" marginTop={1} gap={0}>
           {/* Nouveau service */}

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { Screen, MenuOption, OdooServiceConfig } from './types/index.js';
+import { Screen, MenuOption, OdooServiceConfig, getPrimaryColor } from './types/index.js';
 import { useConfig } from './hooks/useConfig.js';
 import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { Header } from './components/Header.js';
@@ -27,6 +27,8 @@ export function App({ onExit }: AppProps) {
   useEffect(() => {
     process.stdout.write('\x1B[2J\x1B[H');
   }, [serviceRunning]);
+
+  const primaryColor = getPrimaryColor(config);
 
   const options = useMemo<MenuOption[]>(
     () =>
@@ -88,8 +90,8 @@ export function App({ onExit }: AppProps) {
 
   if (loading) {
     return (
-      <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth}>
-        <Header activeService={activeService} serviceRunning={serviceRunning} />
+      <Box borderStyle="round" borderColor={primaryColor} flexDirection="column" width={termWidth}>
+        <Header activeService={activeService} serviceRunning={serviceRunning} primaryColor={primaryColor} />
         <Box paddingX={3} paddingY={2}>
           <Text color="gray" dimColor>
             Chargement…
@@ -100,14 +102,15 @@ export function App({ onExit }: AppProps) {
   }
 
   return (
-    <Box borderStyle="round" borderColor="cyan" flexDirection="column" width={termWidth} height={serviceRunning ? rows : undefined}>
-      <Header activeService={activeService} serviceRunning={serviceRunning} />
+    <Box borderStyle="round" borderColor={primaryColor} flexDirection="column" width={termWidth} height={serviceRunning ? rows : undefined}>
+      <Header activeService={activeService} serviceRunning={serviceRunning} primaryColor={primaryColor} />
 
       {currentScreen === 'home' && (
         <HomeScreen
           leftWidth={leftWidth}
           options={options}
           isActive={!confirmExit}
+          primaryColor={primaryColor}
           onNavigate={screen => setCurrentScreen(screen)}
         />
       )}

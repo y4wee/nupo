@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useReducer } from 'rea
 import { Box, Text, useInput } from 'ink';
 import { stat } from 'fs/promises';
 import { join } from 'path';
-import { NupoConfig, OdooVersion, UpgradeStep, StepStatus } from '../types/index.js';
+import { NupoConfig, OdooVersion, UpgradeStep, StepStatus, getPrimaryColor } from '../types/index.js';
 import {
   GitProgress,
   getLocalCommit, getRemoteCommit, updateRepo,
@@ -222,10 +222,10 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Box flexDirection="row" flexGrow={1}>
-        <LeftPanel width={leftWidth} />
+        <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
 
         <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-          <Text color="cyan" bold>Mise à niveau</Text>
+          <Text color={getPrimaryColor(config)} bold>Mise à niveau</Text>
 
           {/* Aucune version installée */}
           {versions.length === 0 && (
@@ -275,7 +275,7 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color="white">
                 {'Mettre à jour '}
-                <Text color="cyan" bold>{selectedVersionRef.current?.branch}</Text>
+                <Text color={getPrimaryColor(config)} bold>{selectedVersionRef.current?.branch}</Text>
                 {' ?'}
               </Text>
               <Box flexDirection="row" gap={2}>
@@ -303,7 +303,7 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
             <Box flexDirection="column" marginTop={1} gap={0}>
               <Text color="gray">
                 {'Mise à jour de '}
-                <Text color="cyan" bold>{selectedVersionRef.current?.branch}</Text>
+                <Text color={getPrimaryColor(config)} bold>{selectedVersionRef.current?.branch}</Text>
                 {'…'}
               </Text>
               {fetchProgress && (

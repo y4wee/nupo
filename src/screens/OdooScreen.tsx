@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooServiceConfig } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { InstallVersionScreen } from './InstallVersionScreen.js';
 import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
@@ -103,10 +103,10 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
 
   return (
     <Box flexDirection="row">
-      <LeftPanel width={leftWidth} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color="cyan" bold>
+        <Text color={getPrimaryColor(config)} bold>
           Odoo
         </Text>
 
