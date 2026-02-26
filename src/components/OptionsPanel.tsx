@@ -5,15 +5,17 @@ import { MenuOption } from '../types/index.js';
 interface OptionsPanelProps {
   options: MenuOption[];
   selected: number;
+  secondaryColor?: string;
+  textColor?: string;
 }
 
-export function OptionsPanel({ options, selected }: OptionsPanelProps) {
+export function OptionsPanel({ options, selected, secondaryColor, textColor = '#848484' }: OptionsPanelProps) {
   const current = options[selected];
 
   if (options.length === 0) {
     return (
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2}>
-        <Text color="gray" dimColor>
+        <Text color={textColor} dimColor>
           Aucune option disponible.
         </Text>
       </Box>
@@ -38,15 +40,15 @@ export function OptionsPanel({ options, selected }: OptionsPanelProps) {
         })}
       </Box>
 
-      <Box borderStyle="round" borderColor="gray" paddingX={1} paddingY={0}>
-        <Text color="gray" wrap="wrap">
-          {current?.description ?? ''}
+      <Box>
+        <Text color={textColor} dimColor>
+          {'↑↓ naviguer  ·  ↵ sélectionner'}
         </Text>
       </Box>
 
-      <Box>
-        <Text color="gray" dimColor>
-          {'↑↓ naviguer  ·  ↵ sélectionner'}
+      <Box borderStyle="round" borderColor={secondaryColor ?? 'gray'} paddingX={1} paddingY={0}>
+        <Text color={textColor} wrap="wrap">
+          {current?.description ?? ''}
         </Text>
       </Box>
     </Box>

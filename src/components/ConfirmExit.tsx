@@ -4,9 +4,10 @@ import { Box, Text } from 'ink';
 interface ConfirmExitProps {
   visible: boolean;
   selected: number; // 0 = Oui, 1 = Non
+  textColor?: string;
 }
 
-export function ConfirmExit({ visible, selected }: ConfirmExitProps) {
+export function ConfirmExit({ visible, selected, textColor = '#848484' }: ConfirmExitProps) {
   if (!visible) return null;
 
   return (
@@ -38,7 +39,7 @@ export function ConfirmExit({ visible, selected }: ConfirmExitProps) {
           {' Non '}
         </Text>
       </Box>
-      <Text color="gray" dimColor>
+      <Text color={textColor} dimColor>
         {'◀▶ choisir  ·  ↵ confirmer'}
       </Text>
     </Box>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooServiceConfig, getPrimaryColor, CliStartArgs } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, CliStartArgs } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { InstallVersionScreen } from './InstallVersionScreen.js';
 import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
@@ -45,6 +45,7 @@ type OdooSubScreen = 'install' | 'upgrade' | 'service' | 'start';
 export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServiceRunning, onServiceStopped, autoStart }: OdooScreenProps) {
   const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
   const [selected, setSelected] = useState(0);
+  const textColor = getTextColor(config);
 
   // Auto-navigate to start screen when CLI args are present
   useEffect(() => {
@@ -110,10 +111,10 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
 
   return (
     <Box flexDirection="row">
-      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} textColor={textColor} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color={getPrimaryColor(config)} bold>
+        <Text color={getSecondaryColor(config)} bold>
           Odoo
         </Text>
 
@@ -133,14 +134,14 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
           })}
         </Box>
 
-        <Box borderStyle="round" borderColor="gray" paddingX={1} paddingY={0}>
-          <Text color="gray" wrap="wrap">
+        <Box borderStyle="round" borderColor={getSecondaryColor(config)} paddingX={1} paddingY={0}>
+          <Text color={textColor} wrap="wrap">
             {current.description}
           </Text>
         </Box>
 
         <Box>
-          <Text color="gray" dimColor>
+          <Text color={textColor} dimColor>
             {'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour'}
           </Text>
         </Box>

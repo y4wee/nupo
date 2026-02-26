@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
-import { NupoConfig, OdooServiceConfig, getPrimaryColor, CliStartArgs } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, CliStartArgs } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 
@@ -95,6 +95,7 @@ export function StartServiceScreen({
 }: StartServiceScreenProps) {
   const { rows } = useTerminalSize();
   const services = Object.values(config.odoo_services ?? {});
+  const textColor = getTextColor(config);
 
   const [step,       setStep]       = useState<Step>('select');
   const [selected,   setSelected]   = useState(0);
@@ -338,7 +339,7 @@ export function StartServiceScreen({
 
         {/* Filter */}
         <Box borderStyle="round" borderColor={filterMode ? 'cyan' : 'gray'} paddingX={2} paddingY={0} flexDirection="row" gap={1}>
-          <Text color="gray" dimColor>{'filtre ›'}</Text>
+          <Text color={textColor} dimColor>{'filtre ›'}</Text>
           {filterMode ? (
             <TextInput
               value={filterText}
@@ -352,14 +353,14 @@ export function StartServiceScreen({
             </Text>
           )}
           {filterText !== '' && (
-            <Text color="gray" dimColor>({filteredLogs.length})</Text>
+            <Text color={textColor} dimColor>({filteredLogs.length})</Text>
           )}
         </Box>
 
         {/* Logs */}
         <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column" height={logBoxHeight} overflow="hidden">
           {visibleLogs.length === 0 ? (
-            <Text color="gray" dimColor>En attente des logs…</Text>
+            <Text color={textColor} dimColor>En attente des logs…</Text>
           ) : (
             visibleLogs.map((line, i) => <LogLine key={start + i} line={line} idx={start + i} />)
           )}
@@ -368,11 +369,11 @@ export function StartServiceScreen({
         {/* Controls */}
         <Box>
           {filterMode ? (
-            <Text color="gray" dimColor>taper pour filtrer  ·  ↵ valider  ·  Échap quitter filtre</Text>
+            <Text color={textColor} dimColor>taper pour filtrer  ·  ↵ valider  ·  Échap quitter filtre</Text>
           ) : exitCode === null ? (
-            <Text color="gray" dimColor>scroll défiler  ·  / filtrer  ·  Ctrl+C arrêter</Text>
+            <Text color={textColor} dimColor>scroll défiler  ·  / filtrer  ·  Ctrl+C arrêter</Text>
           ) : (
-            <Text color="gray" dimColor>scroll défiler  ·  / filtrer  ·  Échap retour</Text>
+            <Text color={textColor} dimColor>scroll défiler  ·  / filtrer  ·  Échap retour</Text>
           )}
         </Box>
       </Box>
@@ -381,23 +382,23 @@ export function StartServiceScreen({
 
   return (
     <Box flexDirection="row" flexGrow={1}>
-      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} textColor={textColor} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color={getPrimaryColor(config)} bold>Démarrer Service Odoo</Text>
+        <Text color={getSecondaryColor(config)} bold>Démarrer Service Odoo</Text>
 
         {/* ── auto-start error ── */}
         {autoStartError && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="red">{autoStartError}</Text>
-            <Text color="gray" dimColor>
+            <Text color={textColor} dimColor>
               Services disponibles :{' '}
               {services.length === 0
                 ? 'aucun'
                 : services.map(s => s.name).join(', ')}
             </Text>
             <Box marginTop={1}>
-              <Text color="gray" dimColor>Échap retour</Text>
+              <Text color={textColor} dimColor>Échap retour</Text>
             </Box>
           </Box>
         )}
@@ -406,11 +407,11 @@ export function StartServiceScreen({
         {!autoStartError && step === 'select' && services.length === 0 && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="yellow">Aucun service configuré.</Text>
-            <Text color="gray" dimColor>
+            <Text color={textColor} dimColor>
               Créez d'abord un service via « Configurer Service Odoo ».
             </Text>
             <Box marginTop={1}>
-              <Text color="gray" dimColor>Échap retour</Text>
+              <Text color={textColor} dimColor>Échap retour</Text>
             </Box>
           </Box>
         )}
@@ -434,7 +435,7 @@ export function StartServiceScreen({
               );
             })}
             <Box marginTop={1}>
-              <Text color="gray" dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
+              <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
             </Box>
           </Box>
         )}
@@ -481,7 +482,7 @@ export function StartServiceScreen({
               </Box>
             )}
             <Box marginTop={1}>
-              <Text color="gray" dimColor>↑↓ naviguer  ·  ↵/Espace basculer  ·  Échap retour</Text>
+              <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵/Espace basculer  ·  Échap retour</Text>
             </Box>
           </Box>
         )}
@@ -491,7 +492,7 @@ export function StartServiceScreen({
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="white">Base de données (-d) :</Text>
             <Box>
-              <Text color="gray" dimColor>{'› '}</Text>
+              <Text color={textColor} dimColor>{'› '}</Text>
               <TextInput
                 value={inputValue}
                 onChange={setInputValue}
@@ -499,7 +500,7 @@ export function StartServiceScreen({
                 placeholder="ma_base"
               />
             </Box>
-            <Text color="gray" dimColor>↵ valider  ·  Échap retour</Text>
+            <Text color={textColor} dimColor>↵ valider  ·  Échap retour</Text>
           </Box>
         )}
 
@@ -508,7 +509,7 @@ export function StartServiceScreen({
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="white">Module à mettre à jour (-u) :</Text>
             <Box>
-              <Text color="gray" dimColor>{'› '}</Text>
+              <Text color={textColor} dimColor>{'› '}</Text>
               <TextInput
                 value={inputValue}
                 onChange={setInputValue}
@@ -516,7 +517,7 @@ export function StartServiceScreen({
                 placeholder="mon_module"
               />
             </Box>
-            <Text color="gray" dimColor>↵ valider  ·  Échap retour</Text>
+            <Text color={textColor} dimColor>↵ valider  ·  Échap retour</Text>
           </Box>
         )}
 
@@ -525,7 +526,7 @@ export function StartServiceScreen({
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="white">Module à installer (-i) :</Text>
             <Box>
-              <Text color="gray" dimColor>{'› '}</Text>
+              <Text color={textColor} dimColor>{'› '}</Text>
               <TextInput
                 value={inputValue}
                 onChange={setInputValue}
@@ -533,7 +534,7 @@ export function StartServiceScreen({
                 placeholder="mon_module"
               />
             </Box>
-            <Text color="gray" dimColor>↵ valider  ·  Échap retour</Text>
+            <Text color={textColor} dimColor>↵ valider  ·  Échap retour</Text>
           </Box>
         )}
 

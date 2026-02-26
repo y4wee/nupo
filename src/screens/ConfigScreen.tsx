@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
-import { NupoConfig, getPrimaryColor } from '../types/index.js';
+import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
 import { patchConfig, ensureBaseConf, getBaseConfPath } from '../services/config.js';
 import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -54,9 +54,29 @@ const ITEMS: ConfigItem[] = [
     type: 'config',
     key: 'primary_color',
     label: 'Couleur principale',
-    description: 'Couleur principale de l\'interface nupo. Format hexadécimal : #RRGGBB.',
+    description: 'Couleur principale de l\'interface nupo (logo, accents). Format hexadécimal : #RRGGBB.',
     validate: async (value: string) => {
       if (!/^#[0-9a-fA-F]{6}$/.test(value.trim())) return 'Format invalide. Exemple : #9F0C58';
+      return null;
+    },
+  },
+  {
+    type: 'config',
+    key: 'secondary_color',
+    label: 'Couleur secondaire',
+    description: 'Couleur secondaire de l\'interface nupo (titres des écrans). Format hexadécimal : #RRGGBB.',
+    validate: async (value: string) => {
+      if (!/^#[0-9a-fA-F]{6}$/.test(value.trim())) return 'Format invalide. Exemple : #E79439';
+      return null;
+    },
+  },
+  {
+    type: 'config',
+    key: 'text_color',
+    label: 'Couleur des textes',
+    description: 'Couleur des textes secondaires de l\'interface nupo (hints, valeurs, labels). Format hexadécimal : #RRGGBB.',
+    validate: async (value: string) => {
+      if (!/^#[0-9a-fA-F]{6}$/.test(value.trim())) return 'Format invalide. Exemple : #848484';
       return null;
     },
   },
@@ -80,6 +100,7 @@ interface ConfigScreenProps {
 }
 
 export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScreenProps) {
+  const textColor = getTextColor(config);
   const [selected, setSelected] = useState(0);
   const [edit, setEdit] = useState<EditState>({ active: false });
 
@@ -136,17 +157,10 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
 
   return (
     <Box flexDirection="row">
-      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} textColor={textColor} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color={getPrimaryColor(config)} bold>Paramètres</Text>
-
-        {/* Description */}
-        {!edit.active && (
-          <Box borderStyle="round" borderColor="gray" paddingX={1} paddingY={0}>
-            <Text color="gray" wrap="wrap">{currentItem.description}</Text>
-          </Box>
-        )}
+        <Text color={getSecondaryColor(config)} bold>Paramètres</Text>
 
         {/* Liste */}
         {!edit.active && (
@@ -165,7 +179,10 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                   >
                     {` ${isSel ? '▶' : ' '} ${item.label}`}
                   </Text>
-                  <Text color="gray" dimColor>{value}</Text>
+                  <Text color={textColor} dimColor>{value}</Text>
+                  {item.type === 'config' && item.key.endsWith('_color') && config[item.key] && (
+                    <Text color={String(config[item.key])}>●</Text>
+                  )}
                 </Box>
               );
             })}
@@ -179,14 +196,18 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
               {(ITEMS[edit.itemIndex] as Extract<ConfigItem, { type: 'config' }>).label} :
             </Text>
             <Box>
-              <Text color="gray" dimColor>{'› '}</Text>
+              <Text color={textColor} dimColor>{'› '}</Text>
               <PathInput
                 value={edit.value}
                 onChange={value => setEdit(prev => (prev.active ? { ...prev, value, error: null } : prev))}
                 onSubmit={val => void handleSubmit(val)}
                 focus={!(edit as { saving?: boolean }).saving}
+                textColor={textColor}
               />
             </Box>
+            {(ITEMS[edit.itemIndex] as Extract<ConfigItem, { type: 'config' }>)?.key?.endsWith('_color') && /^#[0-9a-fA-F]{6}$/.test(edit.value.trim()) && (
+              <Text><Text color={edit.value.trim()}>● </Text><Text color={textColor} dimColor>{edit.value.trim()}</Text></Text>
+            )}
             {edit.error   && <Text color="red">{edit.error}</Text>}
             {(edit as { saving?: boolean }).saving && <Text color="yellow" dimColor>Sauvegarde…</Text>}
           </Box>
@@ -195,11 +216,18 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
         {/* Aide */}
         <Box marginTop={1}>
           {edit.active ? (
-            <Text color="gray" dimColor>↵ sauvegarder  ·  Échap annuler</Text>
+            <Text color={textColor} dimColor>↵ sauvegarder  ·  Échap annuler</Text>
           ) : (
-            <Text color="gray" dimColor>↑↓ naviguer  ·  ↵ modifier  ·  Échap retour</Text>
+            <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ modifier  ·  Échap retour</Text>
           )}
         </Box>
+
+        {/* Description */}
+        {!edit.active && (
+          <Box borderStyle="round" borderColor={getSecondaryColor(config)} paddingX={1} paddingY={0}>
+            <Text color={textColor} wrap="wrap">{currentItem.description}</Text>
+          </Box>
+        )}
       </Box>
     </Box>
   );

@@ -18,9 +18,10 @@ const STATUS_COLOR: Record<StepStatus, string> = {
 
 interface StepsPanelProps {
   steps: AnyStep[];
+  textColor?: string;
 }
 
-export function StepsPanel({ steps }: StepsPanelProps) {
+export function StepsPanel({ steps, textColor = '#848484' }: StepsPanelProps) {
   if (steps.length === 0) return null;
 
   return (
@@ -40,7 +41,7 @@ export function StepsPanel({ steps }: StepsPanelProps) {
           <Text color={STATUS_COLOR[step.status]}>{STATUS_ICON[step.status]}</Text>
           <Text color="white">{step.label}</Text>
           {step.status === 'success' && step.errorMessage && (
-            <Text color="gray" dimColor>
+            <Text color={textColor} dimColor>
               {'  '}
               {step.errorMessage}
             </Text>

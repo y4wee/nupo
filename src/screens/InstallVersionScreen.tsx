@@ -4,7 +4,7 @@ import TextInput from 'ink-text-input';
 import { mkdir, stat } from 'fs/promises';
 import { join } from 'path';
 import {
-  InstallStep, InstallStepId, StepStatus, NupoConfig, PendingInstall, getPrimaryColor,
+  InstallStep, InstallStepId, StepStatus, NupoConfig, PendingInstall, getPrimaryColor, getSecondaryColor, getTextColor,
 } from '../types/index.js';
 import {
   GitProgress,
@@ -81,6 +81,7 @@ const PHASE_LABEL: Record<GitProgress['phase'], string> = {
 export function InstallVersionScreen({
   config, leftWidth, onComplete, onBack,
 }: InstallVersionScreenProps) {
+  const textColor = getTextColor(config);
   const [steps, dispatch] = useReducer(reducer, buildInitialSteps());
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [branchInput, setBranchInput] = useState('');
@@ -434,10 +435,10 @@ export function InstallVersionScreen({
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Box flexDirection="row" flexGrow={1}>
-        <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
+        <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} textColor={textColor} />
 
         <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-          <Text color={getPrimaryColor(config)} bold>Installer une version</Text>
+          <Text color={getSecondaryColor(config)} bold>Installer une version</Text>
 
           {/* Branch input + pending installs */}
           {currentStepIndex === 0 && (
@@ -448,7 +449,7 @@ export function InstallVersionScreen({
                 <>
                   <Text color="white">Nom de la branche Odoo (ex : 17.0, 16.0) :</Text>
                   <Box>
-                    <Text color="gray" dimColor>{'› '}</Text>
+                    <Text color={textColor} dimColor>{'› '}</Text>
                     <TextInput
                       value={branchInput}
                       onChange={v => { setBranchInput(v); setInputError(null); }}
@@ -457,14 +458,14 @@ export function InstallVersionScreen({
                     />
                   </Box>
                   {inputError && <Text color="red">{inputError}</Text>}
-                  <Text color="gray" dimColor>
+                  <Text color={textColor} dimColor>
                     {'↵ valider  ·  Échap retour'}
                     {pendingInstalls.length > 0 ? '  ·  ↓ reprises' : ''}
                     {installedVersions.length > 0 ? '  ·  ↓ installées' : ''}
                   </Text>
                 </>
               ) : (
-                <Text color="gray" dimColor>Nom de la branche Odoo (ex : 17.0, 16.0)</Text>
+                <Text color={textColor} dimColor>Nom de la branche Odoo (ex : 17.0, 16.0)</Text>
               )}
 
               {/* Pending installs list */}
@@ -493,7 +494,7 @@ export function InstallVersionScreen({
                     );
                   })}
                   {focus === 'pending' && (
-                    <Text color="gray" dimColor>{'↑↓ naviguer  ·  ↵ reprendre  ·  Échap retour'}</Text>
+                    <Text color={textColor} dimColor>{'↑↓ naviguer  ·  ↵ reprendre  ·  Échap retour'}</Text>
                   )}
                 </Box>
               )}
@@ -519,7 +520,7 @@ export function InstallVersionScreen({
                     );
                   })}
                   {focus === 'installed' && (
-                    <Text color="gray" dimColor>{'↑↓ naviguer  ·  ↵ relancer  ·  Échap retour'}</Text>
+                    <Text color={textColor} dimColor>{'↑↓ naviguer  ·  ↵ relancer  ·  Échap retour'}</Text>
                   )}
                 </Box>
               )}
@@ -529,13 +530,13 @@ export function InstallVersionScreen({
           {/* Running — non-clone steps */}
           {currentStepIndex > 0 && !isCloneStep && !done && !errorStep && (
             <Box marginTop={1} flexDirection="column" gap={0}>
-              <Text color="gray">
+              <Text color={textColor}>
                 {'Installation de '}
                 <Text color={getPrimaryColor(config)} bold>{branchName}</Text>
                 {'…'}
               </Text>
               {isPipStep && pipOutput !== '' && (
-                <Text color="gray" dimColor>{pipOutput}</Text>
+                <Text color={textColor} dimColor>{pipOutput}</Text>
               )}
             </Box>
           )}
@@ -559,14 +560,14 @@ export function InstallVersionScreen({
                   {' ← Retour '}
                 </Text>
               </Box>
-              <Text color="gray" dimColor>{'◀▶ choisir  ·  ↵ confirmer  ·  Échap retour'}</Text>
+              <Text color={textColor} dimColor>{'◀▶ choisir  ·  ↵ confirmer  ·  Échap retour'}</Text>
             </Box>
           )}
 
           {/* Running — clone steps with progress bar */}
           {isCloneStep && !errorStep && (
             <Box flexDirection="column" marginTop={1} gap={0}>
-              <Text color="gray">
+              <Text color={textColor}>
                 {'Clonage '}
                 <Text color={getPrimaryColor(config)} bold>{cloneLabel}</Text>
                 {` → ${join(versionPath, cloneLabel)}`}
@@ -574,9 +575,9 @@ export function InstallVersionScreen({
               <Box marginTop={1} flexDirection="column" gap={0}>
                 {cloneProgress ? (
                   <>
-                    <ProgressBar percent={cloneProgress.percent} />
+                    <ProgressBar percent={cloneProgress.percent} textColor={textColor} />
                     <Box gap={2} marginTop={0}>
-                      <Text color="gray" dimColor>
+                      <Text color={textColor} dimColor>
                         {PHASE_LABEL[cloneProgress.phase]}
                       </Text>
                       {cloneProgress.speed && (
@@ -585,7 +586,7 @@ export function InstallVersionScreen({
                     </Box>
                   </>
                 ) : (
-                  <Text color="gray" dimColor>⟳ Connexion au dépôt…</Text>
+                  <Text color={textColor} dimColor>⟳ Connexion au dépôt…</Text>
                 )}
               </Box>
             </Box>
@@ -600,11 +601,11 @@ export function InstallVersionScreen({
                 {' installé avec succès.'}
               </Text>
               <Box flexDirection="column" gap={0}>
-                <Text color="gray" dimColor>{`  community/  → ${join(versionPath, 'community')}`}</Text>
-                <Text color="gray" dimColor>{`  enterprise/ → ${join(versionPath, 'enterprise')}`}</Text>
-                <Text color="gray" dimColor>{`  .venv/      → ${join(versionPath, '.venv')}`}</Text>
-                <Text color="gray" dimColor>{`  custom/`}</Text>
-                <Text color="gray" dimColor>{`  config/`}</Text>
+                <Text color={textColor} dimColor>{`  community/  → ${join(versionPath, 'community')}`}</Text>
+                <Text color={textColor} dimColor>{`  enterprise/ → ${join(versionPath, 'enterprise')}`}</Text>
+                <Text color={textColor} dimColor>{`  .venv/      → ${join(versionPath, '.venv')}`}</Text>
+                <Text color={textColor} dimColor>{`  custom/`}</Text>
+                <Text color={textColor} dimColor>{`  config/`}</Text>
               </Box>
               <Text color="white">{'Échap retour'}</Text>
             </Box>
@@ -612,7 +613,7 @@ export function InstallVersionScreen({
         </Box>
       </Box>
 
-      <StepsPanel steps={steps} />
+      <StepsPanel steps={steps} textColor={textColor} />
       <ErrorPanel steps={steps} />
     </Box>
   );

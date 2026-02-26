@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooServiceConfig, getPrimaryColor } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { ConfigureServiceScreen } from './ConfigureServiceScreen.js';
 
@@ -15,6 +15,7 @@ type SubScreen = 'new' | OdooServiceConfig;
 
 export function OdooServiceScreen({ config, leftWidth, onBack, onConfigChange }: OdooServiceScreenProps) {
   const services = Object.values(config.odoo_services ?? {});
+  const textColor = getTextColor(config);
   const itemCount = 1 + services.length; // 0 = nouveau, 1..n = services
   const [selected, setSelected] = useState(0);
   const [subScreen, setSubScreen] = useState<SubScreen | null>(null);
@@ -46,10 +47,10 @@ export function OdooServiceScreen({ config, leftWidth, onBack, onConfigChange }:
 
   return (
     <Box flexDirection="row" flexGrow={1}>
-      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} textColor={textColor} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color={getPrimaryColor(config)} bold>Configurer Service Odoo</Text>
+        <Text color={getSecondaryColor(config)} bold>Configurer Service Odoo</Text>
 
         <Box flexDirection="column" marginTop={1} gap={0}>
           {/* Nouveau service */}
@@ -63,12 +64,12 @@ export function OdooServiceScreen({ config, leftWidth, onBack, onConfigChange }:
 
           {/* Séparateur si des services existent */}
           {services.length > 0 && (
-            <Text color="gray" dimColor>{'  ─────────────────'}</Text>
+            <Text color={textColor} dimColor>{'  ─────────────────'}</Text>
           )}
 
           {/* Services existants */}
           {services.length === 0 && (
-            <Text color="gray" dimColor>{'  Aucun service configuré'}</Text>
+            <Text color={textColor} dimColor>{'  Aucun service configuré'}</Text>
           )}
           {services.map((s, i) => {
             const isSel = i + 1 === selected;
@@ -90,7 +91,7 @@ export function OdooServiceScreen({ config, leftWidth, onBack, onConfigChange }:
         </Box>
 
         <Box marginTop={1}>
-          <Text color="gray" dimColor>{'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour'}</Text>
+          <Text color={textColor} dimColor>{'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour'}</Text>
         </Box>
       </Box>
     </Box>

@@ -28,6 +28,8 @@ export interface NupoConfig {
   odoo_services?: Record<string, OdooServiceConfig>;
   log_buffer_size?: number;
   primary_color?: string;
+  secondary_color?: string;
+  text_color?: string;
 }
 
 export const DEFAULT_CONFIG: NupoConfig = {
@@ -40,10 +42,20 @@ export const DEFAULT_CONFIG: NupoConfig = {
   odoo_services: {},
   log_buffer_size: 500,
   primary_color: '#9F0C58',
+  secondary_color: '#E79439',
+  text_color: '#848484',
 };
 
 export function getPrimaryColor(config?: NupoConfig | null): string {
   return config?.primary_color ?? '#9F0C58';
+}
+
+export function getSecondaryColor(config?: NupoConfig | null): string {
+  return config?.secondary_color ?? '#E79439';
+}
+
+export function getTextColor(config?: NupoConfig | null): string {
+  return config?.text_color ?? '#848484';
 }
 
 export interface CliStartArgs {

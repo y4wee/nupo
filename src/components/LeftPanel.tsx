@@ -17,9 +17,10 @@ interface LeftPanelProps {
 	width: number;
 	serviceLabel?: string;
 	primaryColor?: string;
+	textColor?: string;
 }
 
-export function LeftPanel({ width, serviceLabel, primaryColor = '#9F0C58' }: LeftPanelProps) {
+export function LeftPanel({ width, serviceLabel, primaryColor = '#9F0C58', textColor = '#848484' }: LeftPanelProps) {
 	const [typedText, setTypedText] = useState("");
 
 	useEffect(() => {
@@ -59,7 +60,7 @@ export function LeftPanel({ width, serviceLabel, primaryColor = '#9F0C58' }: Lef
 			</Box>
 			{serviceLabel && (
 				<Box flexDirection="column" gap={0}>
-					<Text color="gray" dimColor>
+					<Text color={textColor} dimColor>
 						Service
 					</Text>
 					<Text color="yellow" bold>

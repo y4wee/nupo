@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { readdir, stat, mkdir, writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
-import { NupoConfig, OdooVersion, OdooServiceConfig, getPrimaryColor } from '../types/index.js';
+import { NupoConfig, OdooVersion, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
 import { readConfig, writeConfig, readBaseConf } from '../services/config.js';
 import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -71,6 +71,7 @@ export function ConfigureServiceScreen({
 }: ConfigureServiceScreenProps) {
   const isEditing = !!initialService;
   const versions = Object.values(config.odoo_versions);
+  const textColor = getTextColor(config);
 
   // ── Shared state ─────────────────────────────────────────────────────────
 
@@ -405,10 +406,10 @@ export function ConfigureServiceScreen({
 
   return (
     <Box flexDirection="row" flexGrow={1}>
-      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
+      <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} textColor={textColor} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color={getPrimaryColor(config)} bold>
+        <Text color={getSecondaryColor(config)} bold>
           {isEditing ? `Modifier : ${initialService!.name}` : 'Nouveau service'}
         </Text>
 
@@ -434,9 +435,9 @@ export function ConfigureServiceScreen({
               );
             })}
             {saveError && <Box marginTop={1}><Text color="red">{saveError}</Text></Box>}
-            {(editSaving || transitioning) && <Text color="gray" dimColor>⟳ Sauvegarde…</Text>}
+            {(editSaving || transitioning) && <Text color={textColor} dimColor>⟳ Sauvegarde…</Text>}
             <Box marginTop={1}>
-              <Text color="gray" dimColor>↑↓ naviguer  ·  ↵ modifier  ·  Échap retour</Text>
+              <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ modifier  ·  Échap retour</Text>
             </Box>
           </Box>
         )}
@@ -446,7 +447,7 @@ export function ConfigureServiceScreen({
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="white">Nom du service :</Text>
             <Box>
-              <Text color="gray" dimColor>{'› '}</Text>
+              <Text color={textColor} dimColor>{'› '}</Text>
               <TextInput
                 value={nameInput}
                 onChange={v => { setNameInput(v); setNameError(null); }}
@@ -456,7 +457,7 @@ export function ConfigureServiceScreen({
             </Box>
             {nameError  && <Text color="red">{nameError}</Text>}
             {saveError  && <Text color="red">Erreur : {saveError}</Text>}
-            <Text color="gray" dimColor>↵ valider  ·  Échap {isEditing ? 'retour' : 'annuler'}</Text>
+            <Text color={textColor} dimColor>↵ valider  ·  Échap {isEditing ? 'retour' : 'annuler'}</Text>
           </Box>
         )}
 
@@ -484,8 +485,8 @@ export function ConfigureServiceScreen({
                 );
               })}
             </Box>
-            {transitioning && <Text color="gray" dimColor>⟳ Vérification…</Text>}
-            <Text color="gray" dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
+            {transitioning && <Text color={textColor} dimColor>⟳ Vérification…</Text>}
+            <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
           </Box>
         )}
 
@@ -498,7 +499,7 @@ export function ConfigureServiceScreen({
             {!hasEnterprise ? (
               <>
                 <Text color="yellow">Enterprise non disponible pour cette version.</Text>
-                <Text color="gray" dimColor>Échap retour</Text>
+                <Text color={textColor} dimColor>Échap retour</Text>
               </>
             ) : (
               <>
@@ -511,7 +512,7 @@ export function ConfigureServiceScreen({
                     backgroundColor={enterpriseAction === 1 ? 'gray' : undefined}
                     bold={enterpriseAction === 1}>{' ✗ Non '}</Text>
                 </Box>
-                <Text color="gray" dimColor>◀▶ choisir  ·  ↵ confirmer  ·  Échap retour</Text>
+                <Text color={textColor} dimColor>◀▶ choisir  ·  ↵ confirmer  ·  Échap retour</Text>
               </>
             )}
           </Box>
@@ -523,8 +524,8 @@ export function ConfigureServiceScreen({
             <Text color="white">Dossiers custom à inclure :</Text>
             {customFoldersList.length === 0 ? (
               <Box flexDirection="column" gap={0}>
-                <Text color="gray" dimColor>  Aucun module dans custom/</Text>
-                <Text color="gray" dimColor>↵ continuer  ·  Échap retour</Text>
+                <Text color={textColor} dimColor>  Aucun module dans custom/</Text>
+                <Text color={textColor} dimColor>↵ continuer  ·  Échap retour</Text>
               </Box>
             ) : (
               <Box flexDirection="column" gap={0}>
@@ -547,7 +548,7 @@ export function ConfigureServiceScreen({
                       {`  ${selectedFolders.size} sélectionné(s) : ${[...selectedFolders].join(', ')}`}
                     </Text>
                   )}
-                  <Text color="gray" dimColor>
+                  <Text color={textColor} dimColor>
                     ↑↓ naviguer  ·  Espace sélectionner  ·  ↵ confirmer  ·  Échap retour
                   </Text>
                 </Box>
@@ -560,10 +561,10 @@ export function ConfigureServiceScreen({
         {step === 'confirm_delete' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="red" bold>Supprimer le service «{initialService!.name}» ?</Text>
-            <Text color="gray" dimColor>  Le fichier .conf sera également supprimé :</Text>
-            <Text color="gray" dimColor>  {initialService!.confPath}</Text>
+            <Text color={textColor} dimColor>  Le fichier .conf sera également supprimé :</Text>
+            <Text color={textColor} dimColor>  {initialService!.confPath}</Text>
             <Box marginTop={1}>
-              <Text color="gray" dimColor>↵ confirmer  ·  Échap annuler</Text>
+              <Text color={textColor} dimColor>↵ confirmer  ·  Échap annuler</Text>
             </Box>
           </Box>
         )}
@@ -571,7 +572,7 @@ export function ConfigureServiceScreen({
         {/* ── saving ── */}
         {step === 'saving' && (
           <Box marginTop={1}>
-            <Text color="gray">⟳ Enregistrement du service…</Text>
+            <Text color={textColor}>⟳ Enregistrement du service…</Text>
           </Box>
         )}
 
@@ -581,10 +582,10 @@ export function ConfigureServiceScreen({
             <Text color="green">
               {'✓ Service '}<Text bold>{confirmedName}</Text>{' créé.'}
             </Text>
-            <Text color="gray" dimColor>
+            <Text color={textColor} dimColor>
               {`  conf → ${join(selectedVersion?.path ?? '', 'config', `${confirmedName}.conf`)}`}
             </Text>
-            <Text color="gray" dimColor>Échap retour</Text>
+            <Text color={textColor} dimColor>Échap retour</Text>
           </Box>
         )}
       </Box>

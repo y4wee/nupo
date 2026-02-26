@@ -11,6 +11,7 @@ export interface PathInputProps {
   onSubmit: (value: string) => void;
   placeholder?: string;
   focus?: boolean;
+  textColor?: string;
 }
 
 interface CompletionState {
@@ -83,6 +84,7 @@ export function PathInput({
   onSubmit,
   placeholder,
   focus = true,
+  textColor = '#848484',
 }: PathInputProps) {
   const [completions, setCompletions] = useState<CompletionState | null>(null);
 
@@ -170,11 +172,11 @@ export function PathInput({
             );
           })}
           {completions!.items.length > MAX_VISIBLE && (
-            <Text color="gray" dimColor>
+            <Text color={textColor} dimColor>
               {`  … ${completions!.items.length - MAX_VISIBLE} autre(s)`}
             </Text>
           )}
-          <Text color="gray" dimColor>
+          <Text color={textColor} dimColor>
             {'  ↹ suivant · ↵ valider'}
           </Text>
         </Box>

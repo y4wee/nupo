@@ -2,7 +2,7 @@ import React, { useReducer, useEffect, useState, useCallback, useRef } from 'rea
 import { Box, Text } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
-import { InitStep, InitStepId, StepStatus, NupoConfig, getPrimaryColor } from '../types/index.js';
+import { InitStep, InitStepId, StepStatus, NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
 import { checkPython, checkPip } from '../services/checks.js';
 import { patchConfig } from '../services/config.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -54,6 +54,7 @@ function buildInitialSteps(startIndex: number): InitStep[] {
 }
 
 export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
+  const textColor = getTextColor(config);
   const startIndex = findStartIndex(config);
   const [steps, dispatch] = useReducer(stepsReducer, buildInitialSteps(startIndex));
   const [currentStepIndex, setCurrentStepIndex] = useState(startIndex);
@@ -159,10 +160,10 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Box flexDirection="row" flexGrow={1}>
-        <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
+        <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} textColor={textColor} />
 
         <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-          <Text color={getPrimaryColor(config)} bold>
+          <Text color={getSecondaryColor(config)} bold>
             Initialisation
           </Text>
 
@@ -170,15 +171,16 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color="white">Chemin vers le dépôt Odoo :</Text>
               <Box>
-                <Text color="gray" dimColor>{'› '}</Text>
+                <Text color={textColor} dimColor>{'› '}</Text>
                 <PathInput
                   value={odooPath}
                   onChange={setOdooPath}
                   onSubmit={val => void runOdooPath(val)}
                   placeholder={process.cwd()}
+                  textColor={textColor}
                 />
               </Box>
-              <Text color="gray" dimColor>
+              <Text color={textColor} dimColor>
                 Appuyez sur Entrée pour utiliser le répertoire courant
               </Text>
             </Box>
@@ -187,13 +189,13 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
           {errorStep && (
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color="red">Étape échouée : {errorStep.label}</Text>
-              <Text color="gray">Corrigez l&apos;erreur et relancez nupo.</Text>
+              <Text color={textColor}>Corrigez l&apos;erreur et relancez nupo.</Text>
             </Box>
           )}
 
           {!waitingInput && !errorStep && !done && (
             <Box marginTop={1}>
-              <Text color="gray" dimColor>
+              <Text color={textColor} dimColor>
                 ⟳ Vérification en cours…
               </Text>
             </Box>
@@ -201,7 +203,7 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
         </Box>
       </Box>
 
-      <StepsPanel steps={steps} />
+      <StepsPanel steps={steps} textColor={textColor} />
       <ErrorPanel steps={steps} />
     </Box>
   );

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useReducer } from 'rea
 import { Box, Text, useInput } from 'ink';
 import { stat } from 'fs/promises';
 import { join } from 'path';
-import { NupoConfig, OdooVersion, UpgradeStep, StepStatus, getPrimaryColor } from '../types/index.js';
+import { NupoConfig, OdooVersion, UpgradeStep, StepStatus, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
 import {
   GitProgress,
   getLocalCommit, getRemoteCommit, updateRepo,
@@ -43,6 +43,7 @@ async function dirExists(p: string): Promise<boolean> {
 
 export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersionScreenProps) {
   const versions = Object.values(config.odoo_versions);
+  const textColor = getTextColor(config);
 
   const [phase, setPhase] = useState<Phase>('list');
   const [selected, setSelected] = useState(0);
@@ -222,16 +223,16 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Box flexDirection="row" flexGrow={1}>
-        <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
+        <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} textColor={textColor} />
 
         <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-          <Text color={getPrimaryColor(config)} bold>Mise à niveau</Text>
+          <Text color={getSecondaryColor(config)} bold>Mise à niveau</Text>
 
           {/* Aucune version installée */}
           {versions.length === 0 && (
             <Box flexDirection="column" gap={1} marginTop={1}>
-              <Text color="gray">Aucune version Odoo installée.</Text>
-              <Text color="gray" dimColor>Échap retour</Text>
+              <Text color={textColor}>Aucune version Odoo installée.</Text>
+              <Text color={textColor} dimColor>Échap retour</Text>
             </Box>
           )}
 
@@ -265,7 +266,7 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
                 );
               })}
               <Box marginTop={1}>
-                <Text color="gray" dimColor>{'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour'}</Text>
+                <Text color={textColor} dimColor>{'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour'}</Text>
               </Box>
             </Box>
           )}
@@ -294,29 +295,29 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
                   {' ✗ Non '}
                 </Text>
               </Box>
-              <Text color="gray" dimColor>{'◀▶ choisir  ·  ↵ confirmer  ·  Échap retour'}</Text>
+              <Text color={textColor} dimColor>{'◀▶ choisir  ·  ↵ confirmer  ·  Échap retour'}</Text>
             </Box>
           )}
 
           {/* Mise à jour en cours */}
           {phase === 'upgrading' && !errorStep && (
             <Box flexDirection="column" marginTop={1} gap={0}>
-              <Text color="gray">
+              <Text color={textColor}>
                 {'Mise à jour de '}
                 <Text color={getPrimaryColor(config)} bold>{selectedVersionRef.current?.branch}</Text>
                 {'…'}
               </Text>
               {fetchProgress && (
                 <Box flexDirection="column" marginTop={1} gap={0}>
-                  <ProgressBar percent={fetchProgress.percent} />
-                  <Text color="gray" dimColor>
+                  <ProgressBar percent={fetchProgress.percent} textColor={textColor} />
+                  <Text color={textColor} dimColor>
                     {fetchProgress.phase === 'receiving' ? 'Receiving objects' : 'Resolving deltas '}
                     {fetchProgress.speed ? `  ${fetchProgress.speed}` : ''}
                   </Text>
                 </Box>
               )}
               {!fetchProgress && phase === 'upgrading' && (
-                <Text color="gray" dimColor>⟳ Connexion au dépôt…</Text>
+                <Text color={textColor} dimColor>⟳ Connexion au dépôt…</Text>
               )}
             </Box>
           )}
@@ -340,7 +341,7 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
                   {' ← Retour '}
                 </Text>
               </Box>
-              <Text color="gray" dimColor>{'◀▶ choisir  ·  ↵ confirmer  ·  Échap retour'}</Text>
+              <Text color={textColor} dimColor>{'◀▶ choisir  ·  ↵ confirmer  ·  Échap retour'}</Text>
             </Box>
           )}
 
@@ -352,13 +353,13 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
                 <Text bold>{selectedVersionRef.current?.branch}</Text>
                 {' mis à jour avec succès.'}
               </Text>
-              <Text color="gray" dimColor>Échap retour</Text>
+              <Text color={textColor} dimColor>Échap retour</Text>
             </Box>
           )}
         </Box>
       </Box>
 
-      {phase === 'upgrading' && <StepsPanel steps={steps} />}
+      {phase === 'upgrading' && <StepsPanel steps={steps} textColor={textColor} />}
       {phase === 'upgrading' && <ErrorPanel steps={steps} />}
     </Box>
   );

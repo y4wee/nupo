@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 
 const BAR_WIDTH = 50;
 
-export function ProgressBar({ percent }: { percent: number }) {
+export function ProgressBar({ percent, textColor = '#848484' }: { percent: number; textColor?: string }) {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export function ProgressBar({ percent }: { percent: number }) {
     <Box>
       <Text>
         <Text color="yellow">{'─'.repeat(eaten)}{pacman}</Text>
-        <Text color="gray" dimColor>{'·'.repeat(remaining)}</Text>
+        <Text color={textColor} dimColor>{'·'.repeat(remaining)}</Text>
         {` ${String(percent).padStart(3)}%`}
       </Text>
     </Box>

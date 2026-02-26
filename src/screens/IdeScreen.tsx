@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooVersion, getPrimaryColor, StepStatus } from '../types/index.js';
+import { NupoConfig, OdooVersion, getPrimaryColor, getSecondaryColor, getTextColor, StepStatus } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { setupVsCode, IdeStepId } from '../services/ide.js';
 
@@ -53,6 +53,8 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
   const [error,    setError]    = useState<string | null>(null);
 
   const primaryColor = getPrimaryColor(config);
+  const secondaryColor = getSecondaryColor(config);
+  const textColor = getTextColor(config);
 
   const patchStep = (id: SetupStepId, patch: Partial<SetupStep>) =>
     setSteps(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
@@ -89,24 +91,24 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
   if (view === 'select') {
     return (
       <Box flexDirection="row" flexGrow={1}>
-        <LeftPanel width={leftWidth} primaryColor={primaryColor} />
+        <LeftPanel width={leftWidth} primaryColor={primaryColor} textColor={textColor} />
 
         <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-          <Text color={primaryColor} bold>IDE</Text>
+          <Text color={secondaryColor} bold>IDE</Text>
 
           {versions.length === 0 ? (
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color="yellow">Aucune version Odoo installée.</Text>
-              <Text color="gray" dimColor>
+              <Text color={textColor} dimColor>
                 Installez une version via « Odoo → Installer une version ».
               </Text>
               <Box marginTop={1}>
-                <Text color="gray" dimColor>Échap retour</Text>
+                <Text color={textColor} dimColor>Échap retour</Text>
               </Box>
             </Box>
           ) : (
             <Box flexDirection="column" gap={0} marginTop={1}>
-              <Text color="gray" dimColor>
+              <Text color={textColor} dimColor>
                 Sélectionnez une version à ouvrir dans VS Code :
               </Text>
               <Box flexDirection="column" gap={0} marginTop={1}>
@@ -128,7 +130,7 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
                 })}
               </Box>
               <Box marginTop={1}>
-                <Text color="gray" dimColor>↑↓ naviguer  ·  ↵ ouvrir  ·  Échap retour</Text>
+                <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ ouvrir  ·  Échap retour</Text>
               </Box>
             </Box>
           )}
@@ -141,17 +143,17 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
 
   return (
     <Box flexDirection="row" flexGrow={1}>
-      <LeftPanel width={leftWidth} primaryColor={primaryColor} />
+      <LeftPanel width={leftWidth} primaryColor={primaryColor} textColor={textColor} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color={primaryColor} bold>IDE — Configuration VS Code</Text>
+        <Text color={secondaryColor} bold>IDE — Configuration VS Code</Text>
 
         <Box flexDirection="column" gap={0} marginTop={1}>
           {steps.map(s => (
             <Box key={s.id} flexDirection="row" gap={1}>
               <Text color={STATUS_COLORS[s.status]}>{STATUS_ICONS[s.status]}</Text>
               <Text color={s.status === 'error' ? 'red' : 'white'}>{s.label}</Text>
-              {s.detail && <Text color="gray" dimColor>{s.detail}</Text>}
+              {s.detail && <Text color={textColor} dimColor>{s.detail}</Text>}
             </Box>
           ))}
         </Box>
@@ -164,7 +166,7 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
 
         {(done || error) && (
           <Box marginTop={1}>
-            <Text color="gray" dimColor>
+            <Text color={textColor} dimColor>
               {done ? '↵/Échap retour' : 'Échap retour'}
             </Text>
           </Box>

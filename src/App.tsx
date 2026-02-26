@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { Screen, MenuOption, OdooServiceConfig, getPrimaryColor, CliStartArgs } from './types/index.js';
+import { Screen, MenuOption, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, CliStartArgs } from './types/index.js';
 import { useConfig } from './hooks/useConfig.js';
 import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { Header } from './components/Header.js';
@@ -38,6 +38,8 @@ export function App({ onExit, startupArgs }: AppProps) {
   }, [loading, config?.initiated, startupArgs]);
 
   const primaryColor = getPrimaryColor(config);
+  const secondaryColor = getSecondaryColor(config);
+  const textColor = getTextColor(config);
 
   const options = useMemo<MenuOption[]>(
     () =>
@@ -109,7 +111,7 @@ export function App({ onExit, startupArgs }: AppProps) {
       <Box borderStyle="round" borderColor={primaryColor} flexDirection="column" width={termWidth}>
         <Header activeService={activeService} serviceRunning={serviceRunning} primaryColor={primaryColor} />
         <Box paddingX={3} paddingY={2}>
-          <Text color="gray" dimColor>
+          <Text color={textColor} dimColor>
             Chargement…
           </Text>
         </Box>
@@ -127,6 +129,8 @@ export function App({ onExit, startupArgs }: AppProps) {
           options={options}
           isActive={!confirmExit}
           primaryColor={primaryColor}
+          secondaryColor={secondaryColor}
+          textColor={textColor}
           onNavigate={screen => setCurrentScreen(screen)}
         />
       )}
@@ -168,7 +172,7 @@ export function App({ onExit, startupArgs }: AppProps) {
         />
       )}
 
-      <ConfirmExit visible={confirmExit} selected={confirmSelected} />
+      <ConfirmExit visible={confirmExit} selected={confirmSelected} textColor={textColor} />
     </Box>
   );
 }
