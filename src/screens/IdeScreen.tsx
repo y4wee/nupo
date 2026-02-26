@@ -68,6 +68,7 @@ function buildDebugConfig(service: OdooServiceConfig): Record<string, unknown> {
     justMyCode: true,
     env: {
       PYTHONPATH: '${workspaceFolder}',
+      // "GEVENT_SUPPORT": "True",
     },
   };
 }
@@ -143,16 +144,14 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
       } catch {}
 
       const versionServices = services.filter(s => s.versionPath === version.path);
-      let added = 0, updated = 0;
+      let added = 0;
 
       for (const svc of versionServices) {
-        const cfg = buildDebugConfig(svc);
-        const idx = launchData.configurations.findIndex(c => (c as { name?: string }).name === svc.name);
-        if (idx >= 0) {
-          launchData.configurations[idx] = cfg;
-          updated++;
-        } else {
-          launchData.configurations.push(cfg);
+        const alreadyExists = launchData.configurations.some(
+          c => (c as { name?: string }).name === svc.name,
+        );
+        if (!alreadyExists) {
+          launchData.configurations.push(buildDebugConfig(svc));
           added++;
         }
       }
@@ -160,9 +159,9 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
       await writeFile(launchPath, JSON.stringify(launchData, null, 4), 'utf-8');
 
       const parts: string[] = [];
-      if (added)               parts.push(`${added} config(s) ajoutée(s)`);
-      if (updated)             parts.push(`${updated} mise(s) à jour`);
-      if (!versionServices.length) parts.push('aucun service pour cette version');
+      if (added)                          parts.push(`${added} config(s) ajoutée(s)`);
+      if (!added && versionServices.length) parts.push('configs déjà présentes');
+      if (!versionServices.length)        parts.push('aucun service pour cette version');
       patchStep('launch_json', { status: 'success', detail: parts.join(', ') });
     } catch (e) {
       patchStep('launch_json', { status: 'error', detail: String(e) });
