@@ -6,6 +6,7 @@ NUPO_PACKAGE="@y4wee/nupo"
 NODE_MIN_MAJOR=18
 NVM_VERSION="v0.39.7"
 NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+PROFILE_UPDATED=0
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -43,22 +44,18 @@ node_is_recent_enough() {
   [[ "$major" -ge "$NODE_MIN_MAJOR" ]] 2>/dev/null
 }
 
-# ── nvm install ───────────────────────────────────────────────────────────────
-
-install_nvm() {
-  info "Installation de nvm ${NVM_VERSION}…"
-  curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh" | bash
-
-  # Source nvm for the current shell session
-  export NVM_DIR
-  # shellcheck source=/dev/null
-  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-}
+# ── nvm ───────────────────────────────────────────────────────────────────────
 
 load_nvm() {
   export NVM_DIR
   # shellcheck source=/dev/null
   [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+}
+
+install_nvm() {
+  info "Installation de nvm ${NVM_VERSION}…"
+  curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh" | bash
+  load_nvm
 }
 
 ensure_node() {
@@ -87,32 +84,51 @@ ensure_node() {
 
 # ── npm global prefix (sans sudo) ─────────────────────────────────────────────
 
-ensure_npm_prefix() {
-  # If npm global would require sudo, redirect to ~/.npm-global
-  if npm config get prefix 2>/dev/null | grep -q '^/usr'; then
+ensure_no_sudo_npm() {
+  local prefix
+  prefix=$(npm config get prefix 2>/dev/null || true)
+
+  if echo "$prefix" | grep -q '^/usr'; then
     warn "npm global prefix nécessite sudo — redirection vers ~/.npm-global"
     mkdir -p "$HOME/.npm-global"
     npm config set prefix "$HOME/.npm-global"
-
-    local profile=""
-    if [ -f "$HOME/.zshrc" ]; then
-      profile="$HOME/.zshrc"
-    elif [ -f "$HOME/.bashrc" ]; then
-      profile="$HOME/.bashrc"
-    elif [ -f "$HOME/.bash_profile" ]; then
-      profile="$HOME/.bash_profile"
-    fi
-
-    if [ -n "$profile" ]; then
-      local export_line='export PATH="$HOME/.npm-global/bin:$PATH"'
-      if ! grep -qF "$export_line" "$profile"; then
-        printf '\n# npm global (nupo)\n%s\n' "$export_line" >> "$profile"
-        info "PATH mis à jour dans $profile"
-      fi
-    fi
-
-    export PATH="$HOME/.npm-global/bin:$PATH"
   fi
+}
+
+# ── PATH persistence ──────────────────────────────────────────────────────────
+
+add_to_profiles() {
+  local bin_dir="$1"
+  local export_line="export PATH=\"$bin_dir:\$PATH\""
+  local profiles=()
+
+  [ -f "$HOME/.zshrc" ]        && profiles+=("$HOME/.zshrc")
+  [ -f "$HOME/.bashrc" ]       && profiles+=("$HOME/.bashrc")
+  [ -f "$HOME/.bash_profile" ] && profiles+=("$HOME/.bash_profile")
+
+  # Fallback si aucun profil trouvé
+  if [ ${#profiles[@]} -eq 0 ]; then
+    profiles+=("$HOME/.profile")
+  fi
+
+  for profile in "${profiles[@]}"; do
+    if ! grep -qF "$bin_dir" "$profile" 2>/dev/null; then
+      printf '\n# nupo — ajouté par install.sh\n%s\n' "$export_line" >> "$profile"
+      info "PATH ($bin_dir) ajouté dans $profile"
+      PROFILE_UPDATED=1
+    fi
+  done
+}
+
+ensure_bin_in_path() {
+  local npm_bin
+  npm_bin="$(npm prefix -g)/bin"
+
+  # Disponible dans la session courante
+  export PATH="$npm_bin:$PATH"
+
+  # Persister dans les profils shell pour les futures sessions
+  add_to_profiles "$npm_bin"
 }
 
 # ── Install nupo ──────────────────────────────────────────────────────────────
@@ -120,10 +136,18 @@ ensure_npm_prefix() {
 install_nupo() {
   info "Installation de nupo…"
   npm install -g "$NUPO_PACKAGE"
-  success "nupo $(nupo --version 2>/dev/null || true) installé"
+
+  # S'assurer que le bin est dans PATH avant de tester la commande
+  ensure_bin_in_path
+
+  if command -v nupo &>/dev/null; then
+    success "nupo installé dans $(command -v nupo)"
+  else
+    warn "nupo installé mais introuvable dans PATH — redémarrez votre terminal"
+  fi
 }
 
-# ── Shell profile reload hint ─────────────────────────────────────────────────
+# ── Fin ───────────────────────────────────────────────────────────────────────
 
 print_next_steps() {
   echo ""
@@ -131,8 +155,10 @@ print_next_steps() {
   echo ""
   info "Lance nupo avec : nupo"
   echo ""
-  if [ -n "${PROFILE_UPDATED:-}" ]; then
-    warn "Rechargez votre shell ou lancez : source ~/.zshrc  (ou ~/.bashrc)"
+  if [ "$PROFILE_UPDATED" -eq 1 ]; then
+    warn "Rechargez votre shell pour appliquer les changements de PATH :"
+    warn "  source ~/.zshrc   (zsh)"
+    warn "  source ~/.bashrc  (bash)"
     echo ""
   fi
 }
@@ -151,7 +177,7 @@ main() {
   info "Plateforme : $os ($(uname -m))"
 
   ensure_node
-  ensure_npm_prefix
+  ensure_no_sudo_npm
   install_nupo
   print_next_steps
 }
