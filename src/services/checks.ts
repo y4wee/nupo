@@ -27,16 +27,34 @@ async function tryCommand(cmd: string, args: string[]): Promise<CheckResult> {
   }
 }
 
+const isMac = process.platform === 'darwin';
+
+const HINTS = {
+  python: isMac
+    ? 'brew install python3  (ou téléchargez depuis https://python.org)'
+    : 'sudo apt install python3   # Debian/Ubuntu\nsudo dnf install python3   # Fedora/RHEL',
+  pip: isMac
+    ? 'brew install python3  (pip3 inclus)\nou : python3 -m ensurepip --upgrade'
+    : 'sudo apt install python3-pip   # Debian/Ubuntu\nsudo dnf install python3-pip   # Fedora/RHEL',
+  venv: isMac
+    ? 'brew install python3  (venv inclus)'
+    : 'sudo apt install python3-venv   # Debian/Ubuntu\nsudo dnf install python3-venv   # Fedora/RHEL',
+};
+
 export async function checkPython(): Promise<CheckResult> {
   const result = await tryCommand('python3', ['--version']);
   if (result.ok) return result;
-  return tryCommand('python', ['--version']);
+  const result2 = await tryCommand('python', ['--version']);
+  if (result2.ok) return result2;
+  return { ok: false, error: HINTS.python };
 }
 
 export async function checkPip(): Promise<CheckResult> {
   const result = await tryCommand('pip3', ['--version']);
   if (result.ok) return result;
-  return tryCommand('pip', ['--version']);
+  const result2 = await tryCommand('pip', ['--version']);
+  if (result2.ok) return result2;
+  return { ok: false, error: HINTS.pip };
 }
 
 export async function checkVenv(): Promise<CheckResult> {
@@ -44,8 +62,5 @@ export async function checkVenv(): Promise<CheckResult> {
   if (result.ok) return { ok: true };
   const result2 = await tryCommand('python', ['-m', 'venv', '--help']);
   if (result2.ok) return { ok: true };
-  const hint = process.platform === 'darwin'
-    ? 'réinstallez Python via python.org ou brew install python3'
-    : 'sudo apt install python3-venv';
-  return { ok: false, error: `python venv non disponible (${hint})` };
+  return { ok: false, error: HINTS.venv };
 }

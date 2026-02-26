@@ -205,7 +205,15 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
           {errorStep && (
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color="red">Étape échouée : {errorStep.label}</Text>
-              <Text color={textColor}>Corrigez l&apos;erreur et relancez nupo.</Text>
+              {errorStep.errorMessage && (
+                <Box flexDirection="column" gap={0}>
+                  <Text color={textColor}>Pour installer :</Text>
+                  {errorStep.errorMessage.split('\n').map((line, i) => (
+                    <Text key={i} color="cyan">{`  ${line}`}</Text>
+                  ))}
+                </Box>
+              )}
+              <Text color={textColor} dimColor>Relancez nupo une fois corrigé.</Text>
             </Box>
           )}
 
