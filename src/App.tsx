@@ -58,7 +58,7 @@ export function App({ onExit, startupArgs }: AppProps) {
         },
         {
           id: 'config',
-          label: 'Config',
+          label: 'Paramètres',
           description: 'Changer la configuration nupo : modifiez les paramètres de votre environnement.',
           screen: 'config' as Screen,
           visible: config?.initiated === true,

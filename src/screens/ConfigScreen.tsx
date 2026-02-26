@@ -139,7 +139,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       <LeftPanel width={leftWidth} primaryColor={getPrimaryColor(config)} />
 
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-        <Text color={getPrimaryColor(config)} bold>Configuration</Text>
+        <Text color={getPrimaryColor(config)} bold>Paramètres</Text>
 
         {/* Description */}
         {!edit.active && (
