@@ -92,8 +92,9 @@ export function InstallVersionScreen({
   const [pipOutput, setPipOutput] = useState<string>('');
   const [retryCount, setRetryCount] = useState(0);
   const [errorAction, setErrorAction] = useState<0 | 1>(0); // 0 = Relancer, 1 = Retour
-  const [focus, setFocus] = useState<'input' | 'pending'>('input');
-  const [pendingSelected, setPendingSelected] = useState(0);
+  const [focus, setFocus] = useState<'input' | 'pending' | 'installed'>('input');
+  const [pendingSelected,   setPendingSelected]   = useState(0);
+  const [installedSelected, setInstalledSelected] = useState(0);
 
   // Refs for use inside async callbacks
   const dispatchRef = useRef(dispatch);
@@ -103,7 +104,8 @@ export function InstallVersionScreen({
   const branchNameRef = useRef('');
   const versionPathRef = useRef('');
 
-  const pendingInstalls = Object.values(config.pending_installs ?? {});
+  const pendingInstalls    = Object.values(config.pending_installs ?? {});
+  const installedVersions  = Object.values(config.odoo_versions ?? {});
 
   // ── Handlers defined before useInput ──────────────────────────────────────
 
@@ -112,6 +114,15 @@ export function InstallVersionScreen({
     if (!step) return;
     dispatch({ type: 'SET_STATUS', id: step.id, status: 'pending', errorMessage: undefined });
     setRetryCount(c => c + 1);
+  };
+
+  const handleReinstall = (version: { branch: string; path: string }) => {
+    branchNameRef.current  = version.branch;
+    versionPathRef.current = version.path;
+    setBranchName(version.branch);
+    setVersionPath(version.path);
+    dispatch({ type: 'RESET', steps: buildResumedSteps('branch_input') });
+    setCurrentStepIndex(1);
   };
 
   const handleResume = (pending: PendingInstall) => {
@@ -129,13 +140,13 @@ export function InstallVersionScreen({
 
   // ── Input hooks ────────────────────────────────────────────────────────────
 
-  // Input field: Escape = back, ↓ = switch to pending list
+  // Input field: Escape = back, ↓ = switch to pending or installed list
   useInput(
     (_char, key) => {
       if (key.escape) { onBack(); return; }
-      if (key.downArrow && pendingInstalls.length > 0) {
-        setFocus('pending');
-        setPendingSelected(0);
+      if (key.downArrow) {
+        if (pendingInstalls.length > 0) { setFocus('pending'); setPendingSelected(0); }
+        else if (installedVersions.length > 0) { setFocus('installed'); setInstalledSelected(0); }
       }
     },
     { isActive: currentStepIndex === 0 && focus === 'input' },
@@ -148,13 +159,33 @@ export function InstallVersionScreen({
         setFocus('input');
         return;
       }
-      if (key.upArrow)   setPendingSelected(p => p - 1);
-      if (key.downArrow) setPendingSelected(p => Math.min(p + 1, pendingInstalls.length - 1));
+      if (key.upArrow) setPendingSelected(p => p - 1);
+      if (key.downArrow) {
+        if (pendingSelected < pendingInstalls.length - 1) setPendingSelected(p => p + 1);
+        else if (installedVersions.length > 0) { setFocus('installed'); setInstalledSelected(0); }
+      }
       if (key.return && pendingInstalls[pendingSelected]) {
         handleResume(pendingInstalls[pendingSelected]!);
       }
     },
     { isActive: currentStepIndex === 0 && focus === 'pending' },
+  );
+
+  // Installed versions navigation
+  useInput(
+    (_char, key) => {
+      if (key.escape || (key.upArrow && installedSelected === 0)) {
+        if (pendingInstalls.length > 0) { setFocus('pending'); setPendingSelected(pendingInstalls.length - 1); }
+        else setFocus('input');
+        return;
+      }
+      if (key.upArrow)   setInstalledSelected(p => p - 1);
+      if (key.downArrow) setInstalledSelected(p => Math.min(p + 1, installedVersions.length - 1));
+      if (key.return && installedVersions[installedSelected]) {
+        handleReinstall(installedVersions[installedSelected]!);
+      }
+    },
+    { isActive: currentStepIndex === 0 && focus === 'installed' },
   );
 
   // Error recovery: Relancer / Retour
@@ -428,7 +459,8 @@ export function InstallVersionScreen({
                   {inputError && <Text color="red">{inputError}</Text>}
                   <Text color="gray" dimColor>
                     {'↵ valider  ·  Échap retour'}
-                    {pendingInstalls.length > 0 ? '  ·  ↓ reprises en cours' : ''}
+                    {pendingInstalls.length > 0 ? '  ·  ↓ reprises' : ''}
+                    {installedVersions.length > 0 ? '  ·  ↓ installées' : ''}
                   </Text>
                 </>
               ) : (
@@ -462,6 +494,32 @@ export function InstallVersionScreen({
                   })}
                   {focus === 'pending' && (
                     <Text color="gray" dimColor>{'↑↓ naviguer  ·  ↵ reprendre  ·  Échap retour'}</Text>
+                  )}
+                </Box>
+              )}
+
+              {/* Installed versions list */}
+              {installedVersions.length > 0 && (
+                <Box flexDirection="column" gap={0} marginTop={1}>
+                  <Text color="white" bold>Versions installées :</Text>
+                  {installedVersions.map((v, i) => {
+                    const isSelected = focus === 'installed' && i === installedSelected;
+                    return (
+                      <Text
+                        key={v.branch}
+                        color={isSelected ? 'black' : 'white'}
+                        backgroundColor={isSelected ? 'cyan' : undefined}
+                        bold={isSelected}
+                      >
+                        {` ${isSelected ? '▶' : ' '} ${v.branch}  `}
+                        <Text color={isSelected ? 'black' : 'gray'} dimColor={!isSelected}>
+                          {v.path}
+                        </Text>
+                      </Text>
+                    );
+                  })}
+                  {focus === 'installed' && (
+                    <Text color="gray" dimColor>{'↑↓ naviguer  ·  ↵ relancer  ·  Échap retour'}</Text>
                   )}
                 </Box>
               )}
