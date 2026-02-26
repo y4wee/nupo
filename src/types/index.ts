@@ -55,7 +55,7 @@ export interface CliStartArgs {
   shell: boolean;
 }
 
-export type Screen = 'home' | 'init' | 'odoo' | 'config';
+export type Screen = 'home' | 'init' | 'odoo' | 'ide' | 'config';
 export type StepStatus = 'pending' | 'running' | 'success' | 'error';
 export type InitStepId = 'python' | 'pip' | 'odoo_path';
 

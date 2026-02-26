@@ -9,6 +9,7 @@ import { HomeScreen } from './screens/HomeScreen.js';
 import { InitScreen } from './screens/InitScreen.js';
 import { OdooScreen } from './screens/OdooScreen.js';
 import { ConfigScreen } from './screens/ConfigScreen.js';
+import { IdeScreen } from './screens/IdeScreen.js';
 
 interface AppProps {
   onExit: () => void;
@@ -54,6 +55,13 @@ export function App({ onExit, startupArgs }: AppProps) {
           label: 'Odoo',
           description: 'Accédez aux outils Odoo : démarrage, migration, gestion des modules.',
           screen: 'odoo' as Screen,
+          visible: config?.initiated === true,
+        },
+        {
+          id: 'ide',
+          label: 'IDE',
+          description: 'Ouvrir une version Odoo dans VS Code avec la configuration de débogage.',
+          screen: 'ide' as Screen,
           visible: config?.initiated === true,
         },
         {
@@ -140,6 +148,14 @@ export function App({ onExit, startupArgs }: AppProps) {
           onServiceRunning={svc => { setServiceRunning(true); setActiveService(svc); }}
           onServiceStopped={() => { setServiceRunning(false); setActiveService(null); }}
           autoStart={startupArgs}
+        />
+      )}
+
+      {currentScreen === 'ide' && config && (
+        <IdeScreen
+          config={config}
+          leftWidth={leftWidth}
+          onBack={() => setCurrentScreen('home')}
         />
       )}
 
