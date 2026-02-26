@@ -45,7 +45,7 @@ function buildLaunchCmd(
   service: OdooServiceConfig,
   opts: { shell: boolean; db: string; module: string; install: string; stopAfterInit: boolean },
 ): { cmd: string; args: string[] } {
-  const python  = join(service.versionPath, 'venv', 'bin', 'python3');
+  const python  = join(service.versionPath, '.venv', 'bin', 'python3');
   const odooBin = join(service.versionPath, 'community', 'odoo-bin');
   const args: string[] = [odooBin];
 

@@ -326,7 +326,7 @@ export function InstallVersionScreen({
 
   const runCreateVenv = useCallback(async () => {
     dispatchRef.current({ type: 'SET_STATUS', id: 'create_venv', status: 'running' });
-    const venvPath = join(versionPathRef.current, 'venv');
+    const venvPath = join(versionPathRef.current, '.venv');
     const r = await createVenv(venvPath);
     if (r.ok) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'create_venv', status: 'success', errorMessage: venvPath });
@@ -340,7 +340,7 @@ export function InstallVersionScreen({
   const runInstallRequirements = useCallback(async () => {
     dispatchRef.current({ type: 'SET_STATUS', id: 'install_requirements', status: 'running' });
     setPipOutput('');
-    const pipPath = join(versionPathRef.current, 'venv', 'bin', 'pip');
+    const pipPath = join(versionPathRef.current, '.venv', 'bin', 'pip');
     const requirementsPath = join(versionPathRef.current, 'community', 'requirements.txt');
     const r = await installRequirements(pipPath, requirementsPath, line => {
       setPipOutput(line);
@@ -544,7 +544,7 @@ export function InstallVersionScreen({
               <Box flexDirection="column" gap={0}>
                 <Text color="gray" dimColor>{`  community/  → ${join(versionPath, 'community')}`}</Text>
                 <Text color="gray" dimColor>{`  enterprise/ → ${join(versionPath, 'enterprise')}`}</Text>
-                <Text color="gray" dimColor>{`  venv/       → ${join(versionPath, 'venv')}`}</Text>
+                <Text color="gray" dimColor>{`  .venv/      → ${join(versionPath, '.venv')}`}</Text>
                 <Text color="gray" dimColor>{`  custom/`}</Text>
                 <Text color="gray" dimColor>{`  config/`}</Text>
               </Box>
