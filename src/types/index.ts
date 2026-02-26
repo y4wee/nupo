@@ -30,6 +30,8 @@ export interface NupoConfig {
   primary_color?: string;
   secondary_color?: string;
   text_color?: string;
+  cursor_color?: string;
+  venv_installed?: boolean;
 }
 
 export const DEFAULT_CONFIG: NupoConfig = {
@@ -44,6 +46,7 @@ export const DEFAULT_CONFIG: NupoConfig = {
   primary_color: '#9F0C58',
   secondary_color: '#E79439',
   text_color: '#848484',
+  cursor_color: 'cyan',
 };
 
 export function getPrimaryColor(config?: NupoConfig | null): string {
@@ -58,6 +61,10 @@ export function getTextColor(config?: NupoConfig | null): string {
   return config?.text_color ?? '#848484';
 }
 
+export function getCursorColor(config?: NupoConfig | null): string {
+  return config?.cursor_color ?? 'cyan';
+}
+
 export interface CliStartArgs {
   serviceName: string;
   db?: string;
@@ -69,7 +76,7 @@ export interface CliStartArgs {
 
 export type Screen = 'home' | 'init' | 'odoo' | 'ide' | 'config';
 export type StepStatus = 'pending' | 'running' | 'success' | 'error';
-export type InitStepId = 'python' | 'pip' | 'odoo_path';
+export type InitStepId = 'python' | 'pip' | 'venv' | 'odoo_path';
 
 export interface InitStep {
   id: InitStepId;

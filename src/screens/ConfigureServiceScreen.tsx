@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { readdir, stat, mkdir, writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
-import { NupoConfig, OdooVersion, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
+import { NupoConfig, OdooVersion, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { readConfig, writeConfig, readBaseConf } from '../services/config.js';
 import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -72,6 +72,7 @@ export function ConfigureServiceScreen({
   const isEditing = !!initialService;
   const versions = Object.values(config.odoo_versions);
   const textColor = getTextColor(config);
+  const cursorColor = getCursorColor(config);
 
   // ── Shared state ─────────────────────────────────────────────────────────
 
@@ -423,7 +424,7 @@ export function ConfigureServiceScreen({
                 <Box key={p.key} flexDirection="row" gap={1}>
                   <Text
                     color={isSel ? 'black' : (isDel ? 'red' : 'white')}
-                    backgroundColor={isSel ? (isDel ? 'red' : 'cyan') : undefined}
+                    backgroundColor={isSel ? (isDel ? 'red' : cursorColor) : undefined}
                     bold={isSel || isDel}
                   >
                     {` ${isSel ? '▶' : ' '} ${p.label.padEnd(16)}`}
@@ -476,7 +477,7 @@ export function ConfigureServiceScreen({
                 return (
                   <Text key={v.branch}
                     color={isSel ? 'black' : 'white'}
-                    backgroundColor={isSel ? 'cyan' : undefined}
+                    backgroundColor={isSel ? cursorColor : undefined}
                     bold={isSel}
                   >
                     {` ${isSel ? '▶' : ' '} ${v.branch}  `}
@@ -506,7 +507,7 @@ export function ConfigureServiceScreen({
                 <Text color="white">Utiliser Enterprise ?</Text>
                 <Box flexDirection="row" gap={2}>
                   <Text color={enterpriseAction === 0 ? 'black' : 'white'}
-                    backgroundColor={enterpriseAction === 0 ? 'cyan' : undefined}
+                    backgroundColor={enterpriseAction === 0 ? cursorColor : undefined}
                     bold={enterpriseAction === 0}>{' ✓ Oui '}</Text>
                   <Text color={enterpriseAction === 1 ? 'black' : 'white'}
                     backgroundColor={enterpriseAction === 1 ? 'gray' : undefined}
@@ -535,7 +536,7 @@ export function ConfigureServiceScreen({
                   return (
                     <Text key={folder}
                       color={isCursor ? 'black' : 'white'}
-                      backgroundColor={isCursor ? 'cyan' : undefined}
+                      backgroundColor={isCursor ? cursorColor : undefined}
                       bold={isCursor}
                     >
                       {` ${isChecked ? '[✓]' : '[ ]'} ${folder}`}

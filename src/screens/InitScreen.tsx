@@ -2,8 +2,8 @@ import React, { useReducer, useEffect, useState, useCallback, useRef } from 'rea
 import { Box, Text } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
-import { InitStep, InitStepId, StepStatus, NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
-import { checkPython, checkPip } from '../services/checks.js';
+import { InitStep, InitStepId, StepStatus, NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
+import { checkPython, checkPip, checkVenv } from '../services/checks.js';
 import { patchConfig } from '../services/config.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { StepsPanel } from '../components/StepsPanel.js';
@@ -33,8 +33,9 @@ function stepsReducer(state: InitStep[], action: StepAction): InitStep[] {
 }
 
 const STEP_DEFS: { id: InitStepId; label: string }[] = [
-  { id: 'python', label: 'Vérification de Python' },
-  { id: 'pip', label: 'Vérification de pip' },
+  { id: 'python',   label: 'Vérification de Python' },
+  { id: 'pip',      label: 'Vérification de pip' },
+  { id: 'venv',     label: 'Vérification de python venv' },
   { id: 'odoo_path', label: 'Chemin du dépôt Odoo' },
 ];
 
@@ -42,8 +43,9 @@ function findStartIndex(config: NupoConfig | null): number {
   if (!config) return 0;
   if (!config.python_installed) return 0;
   if (!config.pip_installed) return 1;
-  if (!config.odoo_path_repo) return 2;
-  return 3;
+  if (!config.venv_installed) return 2;
+  if (!config.odoo_path_repo) return 3;
+  return 4;
 }
 
 function buildInitialSteps(startIndex: number): InitStep[] {
@@ -60,7 +62,7 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(startIndex);
   const [odooPath, setOdooPath] = useState('');
   const [waitingInput, setWaitingInput] = useState(false);
-  const [done, setDone] = useState(startIndex >= 3);
+  const [done, setDone] = useState(startIndex >= 4);
 
   const dispatchRef = useRef(dispatch);
   dispatchRef.current = dispatch;
@@ -112,6 +114,18 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
     }
   }, []);
 
+  const runVenv = useCallback(async () => {
+    dispatchRef.current({ type: 'SET_STATUS', id: 'venv', status: 'running' });
+    const result = await checkVenv();
+    if (result.ok) {
+      dispatchRef.current({ type: 'SET_STATUS', id: 'venv', status: 'success', errorMessage: 'disponible' });
+      await patchConfig({ venv_installed: true });
+      setCurrentStepIndex(3);
+    } else {
+      dispatchRef.current({ type: 'SET_STATUS', id: 'venv', status: 'error', errorMessage: result.error });
+    }
+  }, []);
+
   const runOdooPath = useCallback(async (inputPath: string) => {
     const resolvedPath = inputPath.trim() || process.cwd();
     setWaitingInput(false);
@@ -124,7 +138,7 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
         errorMessage: resolvedPath,
       });
       await patchConfig({ odoo_path_repo: resolvedPath, initiated: true });
-      setCurrentStepIndex(3);
+      setCurrentStepIndex(4);
       setDone(true);
     } catch {
       dispatchRef.current({
@@ -144,10 +158,12 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
     } else if (currentStepIndex === 1) {
       void runPip();
     } else if (currentStepIndex === 2) {
+      void runVenv();
+    } else if (currentStepIndex === 3) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'odoo_path', status: 'running' });
       setWaitingInput(true);
     }
-  }, [currentStepIndex, runPython, runPip]);
+  }, [currentStepIndex, runPython, runPip, runVenv]);
 
   // Call onComplete once all steps are done
   useEffect(() => {

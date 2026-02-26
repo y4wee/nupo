@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { ConfigureServiceScreen } from './ConfigureServiceScreen.js';
 
@@ -16,6 +16,7 @@ type SubScreen = 'new' | OdooServiceConfig;
 export function OdooServiceScreen({ config, leftWidth, onBack, onConfigChange }: OdooServiceScreenProps) {
   const services = Object.values(config.odoo_services ?? {});
   const textColor = getTextColor(config);
+  const cursorColor = getCursorColor(config);
   const itemCount = 1 + services.length; // 0 = nouveau, 1..n = services
   const [selected, setSelected] = useState(0);
   const [subScreen, setSubScreen] = useState<SubScreen | null>(null);
@@ -56,7 +57,7 @@ export function OdooServiceScreen({ config, leftWidth, onBack, onConfigChange }:
           {/* Nouveau service */}
           <Text
             color={selected === 0 ? 'black' : 'cyan'}
-            backgroundColor={selected === 0 ? 'cyan' : undefined}
+            backgroundColor={selected === 0 ? cursorColor : undefined}
             bold={selected === 0}
           >
             {` ${selected === 0 ? '▶' : ' '} + Nouveau service`}
@@ -77,7 +78,7 @@ export function OdooServiceScreen({ config, leftWidth, onBack, onConfigChange }:
               <Text
                 key={s.name}
                 color={isSel ? 'black' : 'white'}
-                backgroundColor={isSel ? 'cyan' : undefined}
+                backgroundColor={isSel ? cursorColor : undefined}
                 bold={isSel}
               >
                 {` ${isSel ? '▶' : ' '} ${s.name}  `}

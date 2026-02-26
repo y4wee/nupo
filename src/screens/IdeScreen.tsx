@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooVersion, getPrimaryColor, getSecondaryColor, getTextColor, StepStatus } from '../types/index.js';
+import { NupoConfig, OdooVersion, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, StepStatus } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { setupVsCode, IdeStepId } from '../services/ide.js';
 
@@ -55,6 +55,7 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
   const primaryColor = getPrimaryColor(config);
   const secondaryColor = getSecondaryColor(config);
   const textColor = getTextColor(config);
+  const cursorColor = getCursorColor(config);
 
   const patchStep = (id: SetupStepId, patch: Partial<SetupStep>) =>
     setSteps(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
@@ -118,7 +119,7 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
                     <Text
                       key={v.branch}
                       color={isSel ? 'black' : 'white'}
-                      backgroundColor={isSel ? 'cyan' : undefined}
+                      backgroundColor={isSel ? cursorColor : undefined}
                       bold={isSel}
                     >
                       {` ${isSel ? '▶' : ' '} ${v.branch}  `}

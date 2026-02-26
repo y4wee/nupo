@@ -4,7 +4,7 @@ import TextInput from 'ink-text-input';
 import { mkdir, stat } from 'fs/promises';
 import { join } from 'path';
 import {
-  InstallStep, InstallStepId, StepStatus, NupoConfig, PendingInstall, getPrimaryColor, getSecondaryColor, getTextColor,
+  InstallStep, InstallStepId, StepStatus, NupoConfig, PendingInstall, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor,
 } from '../types/index.js';
 import {
   GitProgress,
@@ -82,6 +82,7 @@ export function InstallVersionScreen({
   config, leftWidth, onComplete, onBack,
 }: InstallVersionScreenProps) {
   const textColor = getTextColor(config);
+  const cursorColor = getCursorColor(config);
   const [steps, dispatch] = useReducer(reducer, buildInitialSteps());
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [branchInput, setBranchInput] = useState('');
@@ -509,7 +510,7 @@ export function InstallVersionScreen({
                       <Text
                         key={v.branch}
                         color={isSelected ? 'black' : 'white'}
-                        backgroundColor={isSelected ? 'cyan' : undefined}
+                        backgroundColor={isSelected ? cursorColor : undefined}
                         bold={isSelected}
                       >
                         {` ${isSelected ? '▶' : ' '} ${v.branch}  `}
@@ -547,7 +548,7 @@ export function InstallVersionScreen({
               <Box flexDirection="row" gap={2}>
                 <Text
                   color={errorAction === 0 ? 'black' : 'white'}
-                  backgroundColor={errorAction === 0 ? 'cyan' : undefined}
+                  backgroundColor={errorAction === 0 ? cursorColor : undefined}
                   bold={errorAction === 0}
                 >
                   {' ↺ Relancer '}

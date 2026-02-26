@@ -7,9 +7,10 @@ interface OptionsPanelProps {
   selected: number;
   secondaryColor?: string;
   textColor?: string;
+  cursorColor?: string;
 }
 
-export function OptionsPanel({ options, selected, secondaryColor, textColor = '#848484' }: OptionsPanelProps) {
+export function OptionsPanel({ options, selected, secondaryColor, textColor = '#848484', cursorColor = 'cyan' }: OptionsPanelProps) {
   const current = options[selected];
 
   if (options.length === 0) {
@@ -31,7 +32,7 @@ export function OptionsPanel({ options, selected, secondaryColor, textColor = '#
             <Text
               key={opt.id}
               color={isSelected ? 'black' : 'white'}
-              backgroundColor={isSelected ? 'cyan' : undefined}
+              backgroundColor={isSelected ? cursorColor : undefined}
               bold={isSelected}
             >
               {` ${isSelected ? '▶' : ' '} ${opt.label}`}
@@ -46,7 +47,7 @@ export function OptionsPanel({ options, selected, secondaryColor, textColor = '#
         </Text>
       </Box>
 
-      <Box borderStyle="round" borderColor={secondaryColor ?? 'gray'} paddingX={1} paddingY={0}>
+      <Box borderStyle="round" borderColor={textColor} paddingX={1} paddingY={0}>
         <Text color={textColor} wrap="wrap">
           {current?.description ?? ''}
         </Text>

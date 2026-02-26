@@ -57,9 +57,26 @@ export function getBaseConfPath(): string {
   return join(getConfigDir(), 'odoo_base.conf');
 }
 
-const DEFAULT_BASE_CONF = `[options]
+function getOdooDataDir(): string {
+  if (process.platform === 'darwin') {
+    return join(homedir(), 'Library', 'Application Support', 'Odoo');
+  }
+  return join(homedir(), '.local', 'share', 'Odoo');
+}
+
+function getGeoIpPath(): string {
+  if (process.platform === 'darwin') {
+    return process.arch === 'arm64'
+      ? '/opt/homebrew/share/GeoIP/GeoLite2-City.mmdb'
+      : '/usr/local/share/GeoIP/GeoLite2-City.mmdb';
+  }
+  return '/usr/share/GeoIP/GeoLite2-City.mmdb';
+}
+
+function buildDefaultBaseConf(): string {
+  return `[options]
 csv_internal_sep = ,
-data_dir = /home/${process.env['USER'] ?? 'odoo'}/.local/share/Odoo
+data_dir = ${getOdooDataDir()}
 db_host = False
 db_maxconn = 64
 db_name = False
@@ -72,7 +89,7 @@ dbfilter =
 demo = {}
 email_from = False
 from_filter = False
-geoip_database = /usr/share/GeoIP/GeoLite2-City.mmdb
+geoip_database = ${getGeoIpPath()}
 gevent_port = 8077
 http_enable = True
 http_interface =
@@ -123,6 +140,7 @@ workers = 0
 x_sendfile = False
 admin_passwd = admin
 `;
+}
 
 export async function ensureBaseConf(): Promise<void> {
   const path = getBaseConfPath();
@@ -130,7 +148,7 @@ export async function ensureBaseConf(): Promise<void> {
     await access(path);
   } catch {
     await mkdir(getConfigDir(), { recursive: true });
-    await writeFile(path, DEFAULT_BASE_CONF, 'utf-8');
+    await writeFile(path, buildDefaultBaseConf(), 'utf-8');
   }
 }
 

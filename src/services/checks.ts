@@ -38,3 +38,14 @@ export async function checkPip(): Promise<CheckResult> {
   if (result.ok) return result;
   return tryCommand('pip', ['--version']);
 }
+
+export async function checkVenv(): Promise<CheckResult> {
+  const result = await tryCommand('python3', ['-m', 'venv', '--help']);
+  if (result.ok) return { ok: true };
+  const result2 = await tryCommand('python', ['-m', 'venv', '--help']);
+  if (result2.ok) return { ok: true };
+  const hint = process.platform === 'darwin'
+    ? 'réinstallez Python via python.org ou brew install python3'
+    : 'sudo apt install python3-venv';
+  return { ok: false, error: `python venv non disponible (${hint})` };
+}

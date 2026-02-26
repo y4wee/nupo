@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, CliStartArgs } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, CliStartArgs } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { InstallVersionScreen } from './InstallVersionScreen.js';
 import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
@@ -46,6 +46,7 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
   const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
   const [selected, setSelected] = useState(0);
   const textColor = getTextColor(config);
+  const cursorColor = getCursorColor(config);
 
   // Auto-navigate to start screen when CLI args are present
   useEffect(() => {
@@ -125,7 +126,7 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
               <Text
                 key={opt.id}
                 color={isSelected ? 'black' : 'white'}
-                backgroundColor={isSelected ? 'cyan' : undefined}
+                backgroundColor={isSelected ? cursorColor : undefined}
                 bold={isSelected}
               >
                 {` ${isSelected ? '▶' : ' '} ${opt.label}`}
@@ -134,7 +135,7 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
           })}
         </Box>
 
-        <Box borderStyle="round" borderColor={getSecondaryColor(config)} paddingX={1} paddingY={0}>
+        <Box borderStyle="round" borderColor={textColor} paddingX={1} paddingY={0}>
           <Text color={textColor} wrap="wrap">
             {current.description}
           </Text>

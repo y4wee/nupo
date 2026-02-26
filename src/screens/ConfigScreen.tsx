@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
-import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
+import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { patchConfig, ensureBaseConf, getBaseConfPath } from '../services/config.js';
 import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -72,6 +72,16 @@ const ITEMS: ConfigItem[] = [
   },
   {
     type: 'config',
+    key: 'cursor_color',
+    label: 'Couleur du curseur',
+    description: 'Couleur de surlignage des éléments sélectionnés dans les listes. Format hexadécimal ou nom CSS : #RRGGBB ou cyan.',
+    validate: async (value: string) => {
+      if (!value.trim()) return 'La valeur ne peut pas être vide.';
+      return null;
+    },
+  },
+  {
+    type: 'config',
     key: 'text_color',
     label: 'Couleur des textes',
     description: 'Couleur des textes secondaires de l\'interface nupo (hints, valeurs, labels). Format hexadécimal : #RRGGBB.',
@@ -101,6 +111,7 @@ interface ConfigScreenProps {
 
 export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScreenProps) {
   const textColor = getTextColor(config);
+  const cursorColor = getCursorColor(config);
   const [selected, setSelected] = useState(0);
   const [edit, setEdit] = useState<EditState>({ active: false });
 
@@ -174,7 +185,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                 <Box key={item.type === 'config' ? item.key : item.id} flexDirection="row" gap={1}>
                   <Text
                     color={isSel ? 'black' : 'white'}
-                    backgroundColor={isSel ? 'cyan' : undefined}
+                    backgroundColor={isSel ? cursorColor : undefined}
                     bold={isSel}
                   >
                     {` ${isSel ? '▶' : ' '} ${item.label}`}
@@ -205,9 +216,16 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                 textColor={textColor}
               />
             </Box>
-            {(ITEMS[edit.itemIndex] as Extract<ConfigItem, { type: 'config' }>)?.key?.endsWith('_color') && /^#[0-9a-fA-F]{6}$/.test(edit.value.trim()) && (
-              <Text><Text color={edit.value.trim()}>● </Text><Text color={textColor} dimColor>{edit.value.trim()}</Text></Text>
-            )}
+            {(() => {
+              const editItem = ITEMS[edit.itemIndex] as Extract<ConfigItem, { type: 'config' }>;
+              const val = edit.value.trim();
+              const isColorKey = editItem?.key?.endsWith('_color');
+              const isHex = /^#[0-9a-fA-F]{6}$/.test(val);
+              const isCursorKey = editItem?.key === 'cursor_color';
+              return isColorKey && (isHex || (isCursorKey && val.length > 0)) ? (
+                <Text><Text color={val}>● </Text><Text color={textColor} dimColor>{val}</Text></Text>
+              ) : null;
+            })()}
             {edit.error   && <Text color="red">{edit.error}</Text>}
             {(edit as { saving?: boolean }).saving && <Text color="yellow" dimColor>Sauvegarde…</Text>}
           </Box>
@@ -224,7 +242,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
 
         {/* Description */}
         {!edit.active && (
-          <Box borderStyle="round" borderColor={getSecondaryColor(config)} paddingX={1} paddingY={0}>
+          <Box borderStyle="round" borderColor={textColor} paddingX={1} paddingY={0}>
             <Text color={textColor} wrap="wrap">{currentItem.description}</Text>
           </Box>
         )}

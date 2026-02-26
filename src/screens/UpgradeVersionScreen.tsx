@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useReducer } from 'rea
 import { Box, Text, useInput } from 'ink';
 import { stat } from 'fs/promises';
 import { join } from 'path';
-import { NupoConfig, OdooVersion, UpgradeStep, StepStatus, getPrimaryColor, getSecondaryColor, getTextColor } from '../types/index.js';
+import { NupoConfig, OdooVersion, UpgradeStep, StepStatus, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import {
   GitProgress,
   getLocalCommit, getRemoteCommit, updateRepo,
@@ -44,6 +44,7 @@ async function dirExists(p: string): Promise<boolean> {
 export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersionScreenProps) {
   const versions = Object.values(config.odoo_versions);
   const textColor = getTextColor(config);
+  const cursorColor = getCursorColor(config);
 
   const [phase, setPhase] = useState<Phase>('list');
   const [selected, setSelected] = useState(0);
@@ -253,7 +254,7 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
                   <Box key={v.branch} flexDirection="row" gap={1} alignItems="center">
                     <Text
                       color={isSelected ? 'black' : 'white'}
-                      backgroundColor={isSelected ? 'cyan' : undefined}
+                      backgroundColor={isSelected ? cursorColor : undefined}
                       bold={isSelected}
                     >
                       {` ${isSelected ? '▶' : ' '} ${v.branch}  `}
@@ -282,7 +283,7 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
               <Box flexDirection="row" gap={2}>
                 <Text
                   color={confirmAction === 0 ? 'black' : 'white'}
-                  backgroundColor={confirmAction === 0 ? 'cyan' : undefined}
+                  backgroundColor={confirmAction === 0 ? cursorColor : undefined}
                   bold={confirmAction === 0}
                 >
                   {' ✓ Oui '}
@@ -328,7 +329,7 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
               <Box flexDirection="row" gap={2}>
                 <Text
                   color={errorAction === 0 ? 'black' : 'white'}
-                  backgroundColor={errorAction === 0 ? 'cyan' : undefined}
+                  backgroundColor={errorAction === 0 ? cursorColor : undefined}
                   bold={errorAction === 0}
                 >
                   {' ↺ Relancer '}

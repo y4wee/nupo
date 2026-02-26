@@ -11,10 +11,11 @@ interface HomeScreenProps {
   primaryColor?: string;
   secondaryColor?: string;
   textColor?: string;
+  cursorColor?: string;
   onNavigate: (screen: Screen) => void;
 }
 
-export function HomeScreen({ leftWidth, options, isActive, primaryColor, secondaryColor, textColor, onNavigate }: HomeScreenProps) {
+export function HomeScreen({ leftWidth, options, isActive, primaryColor, secondaryColor, textColor, cursorColor, onNavigate }: HomeScreenProps) {
   const [selected, setSelected] = useState(0);
 
   useInput(
@@ -38,7 +39,7 @@ export function HomeScreen({ leftWidth, options, isActive, primaryColor, seconda
   return (
     <Box flexDirection="row">
       <LeftPanel width={leftWidth} primaryColor={primaryColor} />
-      <OptionsPanel options={options} selected={safeSelected} secondaryColor={secondaryColor} textColor={textColor} />
+      <OptionsPanel options={options} selected={safeSelected} secondaryColor={secondaryColor} textColor={textColor} cursorColor={cursorColor} />
     </Box>
   );
 }

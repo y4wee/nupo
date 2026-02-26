@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { Screen, MenuOption, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, CliStartArgs } from './types/index.js';
+import { Screen, MenuOption, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, CliStartArgs } from './types/index.js';
 import { useConfig } from './hooks/useConfig.js';
 import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { Header } from './components/Header.js';
@@ -40,6 +40,7 @@ export function App({ onExit, startupArgs }: AppProps) {
   const primaryColor = getPrimaryColor(config);
   const secondaryColor = getSecondaryColor(config);
   const textColor = getTextColor(config);
+  const cursorColor = getCursorColor(config);
 
   const options = useMemo<MenuOption[]>(
     () =>
@@ -109,7 +110,7 @@ export function App({ onExit, startupArgs }: AppProps) {
   if (loading) {
     return (
       <Box borderStyle="round" borderColor={primaryColor} flexDirection="column" width={termWidth}>
-        <Header activeService={activeService} serviceRunning={serviceRunning} primaryColor={primaryColor} />
+        <Header activeService={activeService} serviceRunning={serviceRunning} primaryColor={primaryColor} secondaryColor={secondaryColor} />
         <Box paddingX={3} paddingY={2}>
           <Text color={textColor} dimColor>
             Chargement…
@@ -121,7 +122,7 @@ export function App({ onExit, startupArgs }: AppProps) {
 
   return (
     <Box borderStyle="round" borderColor={primaryColor} flexDirection="column" width={termWidth} height={serviceRunning ? rows : undefined}>
-      <Header activeService={activeService} serviceRunning={serviceRunning} primaryColor={primaryColor} />
+      <Header activeService={activeService} serviceRunning={serviceRunning} primaryColor={primaryColor} secondaryColor={secondaryColor} />
 
       {currentScreen === 'home' && (
         <HomeScreen
@@ -131,6 +132,7 @@ export function App({ onExit, startupArgs }: AppProps) {
           primaryColor={primaryColor}
           secondaryColor={secondaryColor}
           textColor={textColor}
+          cursorColor={cursorColor}
           onNavigate={screen => setCurrentScreen(screen)}
         />
       )}
@@ -172,7 +174,7 @@ export function App({ onExit, startupArgs }: AppProps) {
         />
       )}
 
-      <ConfirmExit visible={confirmExit} selected={confirmSelected} textColor={textColor} />
+      <ConfirmExit visible={confirmExit} selected={confirmSelected} textColor={textColor} cursorColor={cursorColor} />
     </Box>
   );
 }

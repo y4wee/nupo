@@ -1,14 +1,19 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { createRequire } from 'module';
 import { OdooServiceConfig } from '../types/index.js';
+
+const _require = createRequire(import.meta.url);
+const { version } = _require('../../package.json') as { version: string };
 
 interface HeaderProps {
   activeService?: OdooServiceConfig | null;
   serviceRunning?: boolean;
   primaryColor?: string;
+  secondaryColor?: string;
 }
 
-export function Header({ activeService, serviceRunning, primaryColor = '#9F0C58' }: HeaderProps) {
+export function Header({ activeService, serviceRunning, primaryColor = '#9F0C58', secondaryColor = '#E79439' }: HeaderProps) {
   return (
     <Box
       paddingX={1}
@@ -22,7 +27,7 @@ export function Header({ activeService, serviceRunning, primaryColor = '#9F0C58'
       gap={1}
     >
       <Text color={primaryColor} bold>nupO</Text>
-      <Text color="white" dimColor>v0.1.0</Text>
+      <Text color={secondaryColor} dimColor>v{version}</Text>
 
       {activeService && (
         <>

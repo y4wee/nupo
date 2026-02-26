@@ -52,12 +52,12 @@ export function LeftPanel({ width, serviceLabel, primaryColor = '#9F0C58', textC
 			<Box flexDirection="column" alignItems="center">
 				<Text color={primaryColor}>{LOGO}</Text>
 			</Box>
-			<Box flexDirection="column" alignItems="center">
+			{/* <Box flexDirection="column" alignItems="center">
 				<Text color="white">{typedText.split("\n")[0] ?? ""}</Text>
 				<Text color={primaryColor} bold>
 					{typedText.split("\n")[1] ?? ""}
 				</Text>
-			</Box>
+			</Box> */}
 			{serviceLabel && (
 				<Box flexDirection="column" gap={0}>
 					<Text color={textColor} dimColor>

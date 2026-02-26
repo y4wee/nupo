@@ -5,9 +5,10 @@ interface ConfirmExitProps {
   visible: boolean;
   selected: number; // 0 = Oui, 1 = Non
   textColor?: string;
+  cursorColor?: string;
 }
 
-export function ConfirmExit({ visible, selected, textColor = '#848484' }: ConfirmExitProps) {
+export function ConfirmExit({ visible, selected, textColor = '#848484', cursorColor = 'cyan' }: ConfirmExitProps) {
   if (!visible) return null;
 
   return (
@@ -33,7 +34,7 @@ export function ConfirmExit({ visible, selected, textColor = '#848484' }: Confir
         </Text>
         <Text
           color={selected === 1 ? 'black' : 'white'}
-          backgroundColor={selected === 1 ? 'cyan' : undefined}
+          backgroundColor={selected === 1 ? cursorColor : undefined}
           bold={selected === 1}
         >
           {' Non '}

@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
-import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, CliStartArgs } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, CliStartArgs } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 
@@ -96,6 +96,7 @@ export function StartServiceScreen({
   const { rows } = useTerminalSize();
   const services = Object.values(config.odoo_services ?? {});
   const textColor = getTextColor(config);
+  const cursorColor = getCursorColor(config);
 
   const [step,       setStep]       = useState<Step>('select');
   const [selected,   setSelected]   = useState(0);
@@ -424,7 +425,7 @@ export function StartServiceScreen({
                 <Text
                   key={svc.name}
                   color={isSel ? 'black' : 'white'}
-                  backgroundColor={isSel ? 'cyan' : undefined}
+                  backgroundColor={isSel ? cursorColor : undefined}
                   bold={isSel}
                 >
                   {` ${isSel ? '▶' : ' '} ${svc.name}  `}
@@ -464,7 +465,7 @@ export function StartServiceScreen({
                       <>
                         <Text
                           color={isSel ? 'black' : 'white'}
-                          backgroundColor={isSel ? 'cyan' : undefined}
+                          backgroundColor={isSel ? cursorColor : undefined}
                           bold={isSel}
                         >
                           {` ${isSel ? '▶' : ' '} ${isSet ? '[✓]' : '[ ]'} ${item.label}`}
