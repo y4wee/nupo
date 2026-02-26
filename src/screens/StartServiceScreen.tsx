@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
-import { NupoConfig, OdooServiceConfig, getPrimaryColor } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor, CliStartArgs } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 
@@ -13,14 +13,16 @@ interface StartServiceScreenProps {
   onBack: () => void;
   onServiceRunning: (service: OdooServiceConfig) => void;
   onServiceStopped: () => void;
+  autoStart?: CliStartArgs;
 }
 
-type Step = 'select' | 'args_list' | 'input_db' | 'input_module' | 'running';
+type Step = 'select' | 'args_list' | 'input_db' | 'input_module' | 'input_install' | 'running';
 
 const ARGS_ITEMS = [
   { key: 'shell'           as const, label: 'shell',             type: 'toggle' as const },
   { key: 'db'              as const, label: '-d <database>',     type: 'input'  as const },
   { key: 'module'          as const, label: '-u <module>',       type: 'input'  as const },
+  { key: 'install'         as const, label: '-i <module>',       type: 'input'  as const },
   { key: 'stop_after_init' as const, label: '--stop-after-init', type: 'toggle' as const },
   { key: 'launch'          as const, label: 'Lancer →',          type: 'action' as const },
 ];
@@ -41,7 +43,7 @@ function buildAddonsPaths(service: OdooServiceConfig): string[] {
 
 function buildLaunchCmd(
   service: OdooServiceConfig,
-  opts: { shell: boolean; db: string; module: string; stopAfterInit: boolean },
+  opts: { shell: boolean; db: string; module: string; install: string; stopAfterInit: boolean },
 ): { cmd: string; args: string[] } {
   const python  = join(service.versionPath, 'venv', 'bin', 'python3');
   const odooBin = join(service.versionPath, 'community', 'odoo-bin');
@@ -52,6 +54,7 @@ function buildLaunchCmd(
   args.push('--addons-path', buildAddonsPaths(service).join(','));
   if (opts.db)            args.push('-d', opts.db);
   if (opts.module)        args.push('-u', opts.module);
+  if (opts.install)       args.push('-i', opts.install);
   if (opts.stopAfterInit) args.push('--stop-after-init');
 
   return { cmd: python, args };
@@ -88,6 +91,7 @@ export function StartServiceScreen({
   onBack,
   onServiceRunning,
   onServiceStopped,
+  autoStart,
 }: StartServiceScreenProps) {
   const { rows } = useTerminalSize();
   const services = Object.values(config.odoo_services ?? {});
@@ -99,6 +103,7 @@ export function StartServiceScreen({
   const [useShell,      setUseShell]      = useState(false);
   const [dbName,        setDbName]        = useState('');
   const [moduleName,    setModuleName]    = useState('');
+  const [installName,   setInstallName]   = useState('');
   const [stopAfterInit, setStopAfterInit] = useState(false);
   const [inputValue,    setInputValue]    = useState('');
 
@@ -107,6 +112,7 @@ export function StartServiceScreen({
   const [scrollOffset, setScrollOffset] = useState(0);
   const [filterText,   setFilterText]   = useState('');
   const [filterMode,   setFilterMode]   = useState(false);
+  const [autoStartError, setAutoStartError] = useState<string | null>(null);
 
   const childRef         = useRef<ChildProcess | null>(null);
   const mountedRef       = useRef(true);
@@ -122,7 +128,7 @@ export function StartServiceScreen({
   }, []);
 
   const service  = services[selected] as OdooServiceConfig | undefined;
-  const warnNoDb = !!moduleName && !dbName;
+  const warnNoDb = !!(moduleName || installName) && !dbName;
 
   // Fixed rows consumed outside the log box:
   // App borders(2) + Header(2) + running view padY(2) + gaps(4)
@@ -132,18 +138,22 @@ export function StartServiceScreen({
 
   // ── Launch ────────────────────────────────────────────────────────────────
 
-  const launchService = () => {
-    if (!service) return;
-    activeServiceRef.current = service;
+  const launchService = (
+    svc?: OdooServiceConfig,
+    overrideOpts?: { shell: boolean; db: string; module: string; install: string; stopAfterInit: boolean },
+  ) => {
+    const target = svc ?? service;
+    if (!target) return;
+    const opts = overrideOpts ?? { shell: useShell, db: dbName, module: moduleName, install: installName, stopAfterInit };
+
+    activeServiceRef.current = target;
     setLogs([]);
     setExitCode(null);
     setScrollOffset(0);
     setStep('running');
-    onServiceRunning(service);
+    onServiceRunning(target);
 
-    const { cmd, args } = buildLaunchCmd(service, {
-      shell: useShell, db: dbName, module: moduleName, stopAfterInit,
-    });
+    const { cmd, args } = buildLaunchCmd(target, opts);
 
     const proc = spawn(cmd, args);
     childRef.current = proc;
@@ -172,10 +182,29 @@ export function StartServiceScreen({
     });
   };
 
+  // ── Auto-start from CLI ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!autoStart) return;
+    const svc = services.find(s => s.name === autoStart.serviceName);
+    if (!svc) {
+      setAutoStartError(`Service introuvable : "${autoStart.serviceName}"`);
+      return;
+    }
+    launchService(svc, {
+      shell:         autoStart.shell,
+      db:            autoStart.db            ?? '',
+      module:        autoStart.module        ?? '',
+      install:       autoStart.install       ?? '',
+      stopAfterInit: autoStart.stopAfterInit,
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Input hooks ───────────────────────────────────────────────────────────
 
   useInput((_char, key) => {
     if (key.escape) { onBack(); return; }
+    if (autoStartError) return;
     if (services.length === 0) return;
     if (key.upArrow)   setSelected(p => Math.max(0, p - 1));
     if (key.downArrow) setSelected(p => Math.min(services.length - 1, p + 1));
@@ -191,9 +220,10 @@ export function StartServiceScreen({
       switch (item.key) {
         case 'shell':           setUseShell(p => !p); break;
         case 'stop_after_init': setStopAfterInit(p => !p); break;
-        case 'db':     setInputValue(dbName);     setStep('input_db');     break;
-        case 'module': setInputValue(moduleName); setStep('input_module'); break;
-        case 'launch': launchService(); break;
+        case 'db':      setInputValue(dbName);      setStep('input_db');      break;
+        case 'module':  setInputValue(moduleName);  setStep('input_module');  break;
+        case 'install': setInputValue(installName); setStep('input_install'); break;
+        case 'launch':  launchService(); break;
       }
     }
   }, { isActive: step === 'args_list' });
@@ -205,6 +235,10 @@ export function StartServiceScreen({
   useInput((_char, key) => {
     if (key.escape) setStep('args_list');
   }, { isActive: step === 'input_module' });
+
+  useInput((_char, key) => {
+    if (key.escape) setStep('args_list');
+  }, { isActive: step === 'input_install' });
 
   useInput((char, key) => {
     if (exitCode !== null) {
@@ -284,9 +318,10 @@ export function StartServiceScreen({
     shell:           useShell,
     db:              !!dbName,
     module:          !!moduleName,
+    install:         !!installName,
     stop_after_init: stopAfterInit,
   };
-  const argDisplay: Record<string, string> = { db: dbName, module: moduleName };
+  const argDisplay: Record<string, string> = { db: dbName, module: moduleName, install: installName };
 
   const activeService = activeServiceRef.current;
 
@@ -351,8 +386,24 @@ export function StartServiceScreen({
       <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
         <Text color={getPrimaryColor(config)} bold>Démarrer Service Odoo</Text>
 
+        {/* ── auto-start error ── */}
+        {autoStartError && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Text color="red">{autoStartError}</Text>
+            <Text color="gray" dimColor>
+              Services disponibles :{' '}
+              {services.length === 0
+                ? 'aucun'
+                : services.map(s => s.name).join(', ')}
+            </Text>
+            <Box marginTop={1}>
+              <Text color="gray" dimColor>Échap retour</Text>
+            </Box>
+          </Box>
+        )}
+
         {/* ── select ── */}
-        {step === 'select' && services.length === 0 && (
+        {!autoStartError && step === 'select' && services.length === 0 && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="yellow">Aucun service configuré.</Text>
             <Text color="gray" dimColor>
@@ -364,7 +415,7 @@ export function StartServiceScreen({
           </Box>
         )}
 
-        {step === 'select' && services.length > 0 && (
+        {!autoStartError && step === 'select' && services.length > 0 && (
           <Box flexDirection="column" gap={0} marginTop={1}>
             {services.map((svc, i) => {
               const isSel = i === selected;
@@ -417,7 +468,7 @@ export function StartServiceScreen({
                         >
                           {` ${isSel ? '▶' : ' '} ${isSet ? '[✓]' : '[ ]'} ${item.label}`}
                         </Text>
-                        {display && <Text color="cyan">{display}</Text>}
+                        {display && <Text color={getPrimaryColor(config)}>{display}</Text>}
                       </>
                     )}
                   </Box>
@@ -426,7 +477,7 @@ export function StartServiceScreen({
             </Box>
             {warnNoDb && (
               <Box marginTop={1}>
-                <Text color="yellow">⚠  -u nécessite un -d (base de données non définie)</Text>
+                <Text color="yellow">⚠  -u/-i nécessite un -d (base de données non définie)</Text>
               </Box>
             )}
             <Box marginTop={1}>
@@ -462,6 +513,23 @@ export function StartServiceScreen({
                 value={inputValue}
                 onChange={setInputValue}
                 onSubmit={v => { setModuleName(v.trim()); setStep('args_list'); }}
+                placeholder="mon_module"
+              />
+            </Box>
+            <Text color="gray" dimColor>↵ valider  ·  Échap retour</Text>
+          </Box>
+        )}
+
+        {/* ── input_install ── */}
+        {step === 'input_install' && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Text color="white">Module à installer (-i) :</Text>
+            <Box>
+              <Text color="gray" dimColor>{'› '}</Text>
+              <TextInput
+                value={inputValue}
+                onChange={setInputValue}
+                onSubmit={v => { setInstallName(v.trim()); setStep('args_list'); }}
                 placeholder="mon_module"
               />
             </Box>

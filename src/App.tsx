@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { Screen, MenuOption, OdooServiceConfig, getPrimaryColor } from './types/index.js';
+import { Screen, MenuOption, OdooServiceConfig, getPrimaryColor, CliStartArgs } from './types/index.js';
 import { useConfig } from './hooks/useConfig.js';
 import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { Header } from './components/Header.js';
@@ -12,9 +12,10 @@ import { ConfigScreen } from './screens/ConfigScreen.js';
 
 interface AppProps {
   onExit: () => void;
+  startupArgs?: CliStartArgs;
 }
 
-export function App({ onExit }: AppProps) {
+export function App({ onExit, startupArgs }: AppProps) {
   const { columns, rows } = useTerminalSize();
   const { config, loading, refresh } = useConfig();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -27,6 +28,13 @@ export function App({ onExit }: AppProps) {
   useEffect(() => {
     process.stdout.write('\x1B[2J\x1B[H');
   }, [serviceRunning]);
+
+  // Auto-navigate to odoo screen when CLI start args are present
+  useEffect(() => {
+    if (!loading && config?.initiated && startupArgs) {
+      setCurrentScreen('odoo');
+    }
+  }, [loading, config?.initiated, startupArgs]);
 
   const primaryColor = getPrimaryColor(config);
 
@@ -131,6 +139,7 @@ export function App({ onExit }: AppProps) {
           onConfigChange={() => void refresh()}
           onServiceRunning={svc => { setServiceRunning(true); setActiveService(svc); }}
           onServiceStopped={() => { setServiceRunning(false); setActiveService(null); }}
+          autoStart={startupArgs}
         />
       )}
 

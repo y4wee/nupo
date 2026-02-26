@@ -46,6 +46,15 @@ export function getPrimaryColor(config?: NupoConfig | null): string {
   return config?.primary_color ?? '#9F0C58';
 }
 
+export interface CliStartArgs {
+  serviceName: string;
+  db?: string;
+  module?: string;
+  install?: string;
+  stopAfterInit: boolean;
+  shell: boolean;
+}
+
 export type Screen = 'home' | 'init' | 'odoo' | 'config';
 export type StepStatus = 'pending' | 'running' | 'success' | 'error';
 export type InitStepId = 'python' | 'pip' | 'odoo_path';

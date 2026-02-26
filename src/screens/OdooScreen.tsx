@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooServiceConfig, getPrimaryColor } from '../types/index.js';
+import { NupoConfig, OdooServiceConfig, getPrimaryColor, CliStartArgs } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { InstallVersionScreen } from './InstallVersionScreen.js';
 import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
@@ -14,6 +14,7 @@ interface OdooScreenProps {
   onConfigChange: () => void;
   onServiceRunning: (service: OdooServiceConfig) => void;
   onServiceStopped: () => void;
+  autoStart?: CliStartArgs;
 }
 
 const ODOO_OPTIONS = [
@@ -41,9 +42,14 @@ const ODOO_OPTIONS = [
 
 type OdooSubScreen = 'install' | 'upgrade' | 'service' | 'start';
 
-export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServiceRunning, onServiceStopped }: OdooScreenProps) {
+export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServiceRunning, onServiceStopped, autoStart }: OdooScreenProps) {
   const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
   const [selected, setSelected] = useState(0);
+
+  // Auto-navigate to start screen when CLI args are present
+  useEffect(() => {
+    if (autoStart) setSubScreen('start');
+  }, []);
 
   useInput(
     (_char, key) => {
@@ -95,6 +101,7 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
         onBack={() => setSubScreen(null)}
         onServiceRunning={onServiceRunning}
         onServiceStopped={onServiceStopped}
+        autoStart={autoStart}
       />
     );
   }
