@@ -21,7 +21,7 @@ export function Header({ activeService, serviceRunning, primaryColor = '#9F0C58'
       flexDirection="row"
       gap={1}
     >
-      <Text color={primaryColor} bold>nupo</Text>
+      <Text color={primaryColor} bold>nupO</Text>
       <Text color="white" dimColor>v0.1.0</Text>
 
       {activeService && (
