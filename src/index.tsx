@@ -4,6 +4,7 @@ import { render } from 'ink';
 import { App } from './App.js';
 import { CliStartArgs } from './types/index.js';
 import { configExists, readConfig } from './services/config.js';
+import { setupVsCode } from './services/ide.js';
 
 // ── Help ─────────────────────────────────────────────────────────────────────
 const rawArgs = process.argv.slice(2);
@@ -14,9 +15,11 @@ nupO — gestionnaire d'environnements Odoo
 USAGE
   nupo                          Lance l'interface interactive
   nupo start <service> [opts]   Lance directement un service Odoo
+  nupo code <branche>           Configure .vscode et ouvre VS Code
 
 COMMANDES
   start <service>               Démarre le service nommé <service>
+  code <branche>                Configure et ouvre la version Odoo dans VS Code
 
 OPTIONS DE START
   -d <base>                     Base de données (--database)
@@ -31,6 +34,8 @@ EXEMPLES
   nupo start mon_service -d ma_base -u mon_module
   nupo start mon_service -d ma_base -i mon_module --stop-after-init
   nupo start mon_service --shell
+  nupo code 18.0
+  nupo code 17.0
 
 `);
   process.exit(0);
@@ -57,6 +62,51 @@ function parseCliArgs(): CliStartArgs | null {
 }
 
 const startupArgs = parseCliArgs();
+
+// ── nupo code <branch> ────────────────────────────────────────────────────────
+if (rawArgs[0] === 'code') {
+  const branch = rawArgs[1];
+  if (!branch) {
+    process.stderr.write(`nupo: usage : nupo code <branche>\n`);
+    process.exit(1);
+  }
+
+  const exists = await configExists();
+  if (!exists) {
+    process.stderr.write(`nupo: aucune configuration trouvée. Lancez "nupo" pour initialiser.\n`);
+    process.exit(1);
+  }
+  const cfg = await readConfig();
+  if (!cfg.initiated) {
+    process.stderr.write(`nupo: nupo n'est pas initialisé. Lancez "nupo" pour configurer.\n`);
+    process.exit(1);
+  }
+
+  const version = (cfg.odoo_versions ?? {})[branch];
+  if (!version) {
+    const names = Object.keys(cfg.odoo_versions ?? {});
+    const list  = names.length > 0 ? names.join(', ') : 'aucune';
+    process.stderr.write(`nupo: version introuvable : "${branch}"\nVersions disponibles : ${list}\n`);
+    process.exit(1);
+  }
+
+  const LABELS: Record<string, string> = {
+    vscode_dir:    'Dossier .vscode',
+    settings_json: 'settings.json  ',
+    launch_json:   'launch.json    ',
+    open_vscode:   'Ouvrir VS Code ',
+  };
+
+  const services = Object.values(cfg.odoo_services ?? {});
+  const ok = await setupVsCode(version, services, (id, status, detail) => {
+    const icon  = status === 'running' ? '…' : status === 'success' ? '✓' : '✗';
+    const label = LABELS[id] ?? id;
+    const info  = detail ? `  ${detail}` : '';
+    if (status !== 'running') process.stdout.write(`${icon} ${label}${info}\n`);
+  });
+
+  process.exit(ok ? 0 : 1);
+}
 
 // ── Pre-flight validation (before alternate screen) ───────────────────────────
 if (startupArgs) {

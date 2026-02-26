@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { mkdir, access, readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
-import { spawn } from 'child_process';
-import { NupoConfig, OdooVersion, OdooServiceConfig, getPrimaryColor, StepStatus } from '../types/index.js';
+import { NupoConfig, OdooVersion, getPrimaryColor, StepStatus } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
+import { setupVsCode, IdeStepId } from '../services/ide.js';
 
 interface IdeScreenProps {
   config: NupoConfig;
@@ -44,35 +42,6 @@ const STATUS_COLORS: Record<StepStatus, string> = {
   error:   'red',
 };
 
-function buildAddonsPaths(service: OdooServiceConfig): string[] {
-  const paths = [join(service.versionPath, 'community', 'addons')];
-  if (service.useEnterprise) paths.push(join(service.versionPath, 'enterprise'));
-  for (const f of service.customFolders) paths.push(join(service.versionPath, 'custom', f));
-  return paths;
-}
-
-function buildDebugConfig(service: OdooServiceConfig): Record<string, unknown> {
-  return {
-    name:        service.name,
-    type:        'debugpy',
-    request:     'launch',
-    stopOnEntry: false,
-    program:     join(service.versionPath, 'community', 'odoo-bin'),
-    args: [
-      '--addons-path',
-      buildAddonsPaths(service).join(','),
-      '-c',
-      service.confPath,
-    ],
-    console:    'integratedTerminal',
-    justMyCode: true,
-    env: {
-      PYTHONPATH: '${workspaceFolder}',
-      // "GEVENT_SUPPORT": "True",
-    },
-  };
-}
-
 export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
   const versions = Object.values(config.odoo_versions ?? {});
   const services = Object.values(config.odoo_services ?? {});
@@ -94,97 +63,12 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
     setDone(false);
     setError(null);
 
-    const vscodeDir    = join(version.path, '.vscode');
-    const settingsPath = join(vscodeDir, 'settings.json');
-    const launchPath   = join(vscodeDir, 'launch.json');
+    const ok = await setupVsCode(version, services, (id, status, detail) => {
+      patchStep(id as IdeStepId, { status: status as StepStatus, detail });
+      if (status === 'error') setError(detail ?? 'Erreur inconnue');
+    });
 
-    // ── Step 1: .vscode directory ────────────────────────────────────────────
-    patchStep('vscode_dir', { status: 'running' });
-    try {
-      await mkdir(vscodeDir, { recursive: true });
-      patchStep('vscode_dir', { status: 'success' });
-    } catch (e) {
-      patchStep('vscode_dir', { status: 'error', detail: String(e) });
-      setError(String(e));
-      return;
-    }
-
-    // ── Step 2: settings.json ────────────────────────────────────────────────
-    patchStep('settings_json', { status: 'running' });
-    try {
-      let exists = false;
-      try { await access(settingsPath); exists = true; } catch {}
-      if (!exists) {
-        const content = {
-          'python.defaultInterpreterPath': '${workspaceFolder}/.venv/bin/python',
-          'python.terminal.activateEnvironment': true,
-        };
-        await writeFile(settingsPath, JSON.stringify(content, null, 4), 'utf-8');
-        patchStep('settings_json', { status: 'success', detail: 'créé' });
-      } else {
-        patchStep('settings_json', { status: 'success', detail: 'existant' });
-      }
-    } catch (e) {
-      patchStep('settings_json', { status: 'error', detail: String(e) });
-      setError(String(e));
-      return;
-    }
-
-    // ── Step 3: launch.json ──────────────────────────────────────────────────
-    patchStep('launch_json', { status: 'running' });
-    try {
-      type LaunchJson = { version: string; configurations: Record<string, unknown>[] };
-      let launchData: LaunchJson = { version: '0.2.0', configurations: [] };
-
-      try {
-        const raw    = await readFile(launchPath, 'utf-8');
-        const parsed = JSON.parse(raw) as Partial<LaunchJson>;
-        launchData.version        = parsed.version ?? '0.2.0';
-        launchData.configurations = Array.isArray(parsed.configurations) ? parsed.configurations : [];
-      } catch {}
-
-      const versionServices = services.filter(s => s.versionPath === version.path);
-      let added = 0;
-
-      for (const svc of versionServices) {
-        const alreadyExists = launchData.configurations.some(
-          c => (c as { name?: string }).name === svc.name,
-        );
-        if (!alreadyExists) {
-          launchData.configurations.push(buildDebugConfig(svc));
-          added++;
-        }
-      }
-
-      await writeFile(launchPath, JSON.stringify(launchData, null, 4), 'utf-8');
-
-      const parts: string[] = [];
-      if (added)                          parts.push(`${added} config(s) ajoutée(s)`);
-      if (!added && versionServices.length) parts.push('configs déjà présentes');
-      if (!versionServices.length)        parts.push('aucun service pour cette version');
-      patchStep('launch_json', { status: 'success', detail: parts.join(', ') });
-    } catch (e) {
-      patchStep('launch_json', { status: 'error', detail: String(e) });
-      setError(String(e));
-      return;
-    }
-
-    // ── Step 4: open VS Code ─────────────────────────────────────────────────
-    patchStep('open_vscode', { status: 'running' });
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const proc = spawn('code', [version.path], { detached: true, stdio: 'ignore' });
-        proc.on('error', reject);
-        setTimeout(() => { proc.unref(); resolve(); }, 200);
-      });
-      patchStep('open_vscode', { status: 'success' });
-    } catch {
-      patchStep('open_vscode', { status: 'error', detail: 'code introuvable — vérifiez le PATH' });
-      setError('VS Code (code) introuvable dans le PATH');
-      return;
-    }
-
-    setDone(true);
+    if (ok) setDone(true);
   }
 
   // ── Input ──────────────────────────────────────────────────────────────────
