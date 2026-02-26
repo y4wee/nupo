@@ -22,13 +22,7 @@ export function OptionsPanel({ options, selected }: OptionsPanelProps) {
 
   return (
     <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
-      <Box borderStyle="round" borderColor="gray" paddingX={1} paddingY={0}>
-        <Text color="gray" wrap="wrap">
-          {current?.description ?? ''}
-        </Text>
-      </Box>
-
-      <Box flexDirection="column" marginTop={1} gap={0}>
+      <Box flexDirection="column" gap={0}>
         {options.map((opt, i) => {
           const isSelected = i === selected;
           return (
@@ -44,7 +38,13 @@ export function OptionsPanel({ options, selected }: OptionsPanelProps) {
         })}
       </Box>
 
-      <Box marginTop={1}>
+      <Box borderStyle="round" borderColor="gray" paddingX={1} paddingY={0}>
+        <Text color="gray" wrap="wrap">
+          {current?.description ?? ''}
+        </Text>
+      </Box>
+
+      <Box>
         <Text color="gray" dimColor>
           {'↑↓ naviguer  ·  ↵ sélectionner'}
         </Text>
