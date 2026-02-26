@@ -3,6 +3,7 @@ import React from 'react';
 import { render } from 'ink';
 import { App } from './App.js';
 import { CliStartArgs } from './types/index.js';
+import { configExists, readConfig } from './services/config.js';
 
 // ── Help ─────────────────────────────────────────────────────────────────────
 const rawArgs = process.argv.slice(2);
@@ -56,6 +57,29 @@ function parseCliArgs(): CliStartArgs | null {
 }
 
 const startupArgs = parseCliArgs();
+
+// ── Pre-flight validation (before alternate screen) ───────────────────────────
+if (startupArgs) {
+  const exists = await configExists();
+  if (!exists) {
+    process.stderr.write(`nupo: aucune configuration trouvée. Lancez "nupo" pour initialiser.\n`);
+    process.exit(1);
+  }
+  const cfg = await readConfig();
+  if (!cfg.initiated) {
+    process.stderr.write(`nupo: nupo n'est pas initialisé. Lancez "nupo" pour configurer.\n`);
+    process.exit(1);
+  }
+  const services = cfg.odoo_services ?? {};
+  if (!services[startupArgs.serviceName]) {
+    const names = Object.keys(services);
+    const list  = names.length > 0 ? names.join(', ') : 'aucun';
+    process.stderr.write(
+      `nupo: service introuvable : "${startupArgs.serviceName}"\nServices disponibles : ${list}\n`,
+    );
+    process.exit(1);
+  }
+}
 
 // ── Alternate screen buffer ───────────────────────────────────────────────────
 // Enter alternate screen + hide cursor before rendering anything
