@@ -48,8 +48,10 @@ node_is_recent_enough() {
 
 load_nvm() {
   export NVM_DIR
+  set +u  # nvm utilise des variables potentiellement non définies
   # shellcheck source=/dev/null
   [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+  set -u
 }
 
 install_nvm() {
@@ -77,8 +79,10 @@ ensure_node() {
     die "nvm introuvable après installation. Relancez votre terminal et réessayez."
   fi
 
+  set +u
   nvm install --lts
   nvm use --lts
+  set -u
   success "Node.js $(node --version) installé"
 }
 
