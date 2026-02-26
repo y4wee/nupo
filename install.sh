@@ -92,8 +92,9 @@ ensure_no_sudo_npm() {
   local prefix
   prefix=$(npm config get prefix 2>/dev/null || true)
 
-  if echo "$prefix" | grep -q '^/usr'; then
-    warn "npm global prefix nécessite sudo — redirection vers ~/.npm-global"
+  # Rediriger uniquement si le prefix n'est pas accessible en écriture
+  if [ -n "$prefix" ] && [ ! -w "$prefix" ]; then
+    warn "npm global prefix non accessible en écriture — redirection vers ~/.npm-global"
     mkdir -p "$HOME/.npm-global"
     npm config set prefix "$HOME/.npm-global"
   fi
@@ -105,6 +106,12 @@ add_to_profiles() {
   local bin_dir="$1"
   local export_line="export PATH=\"$bin_dir:\$PATH\""
   local profiles=()
+
+  # Sur macOS, zsh est le shell par défaut — créer .zshrc s'il n'existe pas
+  if [ "$(uname -s)" = "Darwin" ] && [ ! -f "$HOME/.zshrc" ]; then
+    touch "$HOME/.zshrc"
+    info "Création de ~/.zshrc (shell zsh macOS)"
+  fi
 
   [ -f "$HOME/.zshrc" ]        && profiles+=("$HOME/.zshrc")
   [ -f "$HOME/.bashrc" ]       && profiles+=("$HOME/.bashrc")
