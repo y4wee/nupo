@@ -1,15 +1,22 @@
 {
   "name": "nupo",
   "version": "0.1.0",
-  "description": "nupo CLI - a powerful agentic coding tool",
+  "description": "nupo CLI - Odoo development environment manager",
   "type": "module",
   "bin": {
     "nupo": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
   },
   "scripts": {
     "dev": "tsx src/index.tsx",
     "build": "tsc",
     "start": "node dist/index.js",
+    "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "install:local": "npm run build && mkdir -p $HOME/.local/bin && ln -sf $(pwd)/dist/index.js $HOME/.local/bin/nupo && chmod +x dist/index.js && echo 'nupo installé dans ~/.local/bin/nupo'"
