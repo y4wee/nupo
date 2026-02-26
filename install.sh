@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ── nupo installer ────────────────────────────────────────────────────────────
-NUPO_PACKAGE="nupo"
+NUPO_PACKAGE="@y4wee/nupo"
 NODE_MIN_MAJOR=18
 NVM_VERSION="v0.39.7"
 NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
