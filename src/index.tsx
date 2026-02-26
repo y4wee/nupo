@@ -4,9 +4,40 @@ import { render } from 'ink';
 import { App } from './App.js';
 import { CliStartArgs } from './types/index.js';
 
+// ── Help ─────────────────────────────────────────────────────────────────────
+const rawArgs = process.argv.slice(2);
+if (rawArgs[0] === '--help' || rawArgs[0] === '-h') {
+  process.stdout.write(`
+nupO — gestionnaire d'environnements Odoo
+
+USAGE
+  nupo                          Lance l'interface interactive
+  nupo start <service> [opts]   Lance directement un service Odoo
+
+COMMANDES
+  start <service>               Démarre le service nommé <service>
+
+OPTIONS DE START
+  -d <base>                     Base de données (--database)
+  -u <module>                   Module à mettre à jour (--update)
+  -i <module>                   Module à installer (--init)
+  --stop-after-init             Arrête Odoo après l'initialisation
+  --shell                       Lance en mode shell interactif
+
+EXEMPLES
+  nupo
+  nupo start mon_service
+  nupo start mon_service -d ma_base -u mon_module
+  nupo start mon_service -d ma_base -i mon_module --stop-after-init
+  nupo start mon_service --shell
+
+`);
+  process.exit(0);
+}
+
 // ── CLI argument parsing ──────────────────────────────────────────────────────
 function parseCliArgs(): CliStartArgs | null {
-  const args = process.argv.slice(2);
+  const args = rawArgs;
   if (args[0] !== 'start' || !args[1]) return null;
 
   const result: CliStartArgs = { serviceName: args[1]!, stopAfterInit: false, shell: false };
