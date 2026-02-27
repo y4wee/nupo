@@ -131,15 +131,9 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
   const [sshKeyPath, setSshKeyPath] = useState('');
   const [sshError, setSshError]   = useState<string | null>(null);
   const [sshCopied, setSshCopied] = useState<'idle' | ClipboardResult>('idle');
-  const sshCopyReadyRef = useRef(false);
-
-  // Reset copy state and add guard delay when entering instructions phase
+  // Reset copy state when entering instructions or success phase
   useEffect(() => {
-    if (sshPhase !== 'instructions' && sshPhase !== 'success') return;
-    setSshCopied('idle');
-    sshCopyReadyRef.current = false;
-    const t = setTimeout(() => { sshCopyReadyRef.current = true; }, 200);
-    return () => clearTimeout(t);
+    if (sshPhase === 'instructions' || sshPhase === 'success') setSshCopied('idle');
   }, [sshPhase]);
 
   const startSSHCheck = useCallback(async () => {
@@ -205,7 +199,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       }
       // SSH instructions: C copies key, Enter = verify
       if (sshPhase === 'instructions') {
-        if (_char === 'c' && sshPubKey && sshCopyReadyRef.current) {
+        if (_char === 'c' && sshPubKey) {
           setSshCopied(copyToClipboard(sshPubKey));
         } else if (key.return) {
           void runSSHVerify(sshKeyPath);
@@ -216,7 +210,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       }
       // SSH success: C copies key, anything else returns to list
       if (sshPhase === 'success') {
-        if (_char === 'c' && sshPubKey && sshCopyReadyRef.current) {
+        if (_char === 'c' && sshPubKey) {
           setSshCopied(copyToClipboard(sshPubKey));
         } else {
           setSshPhase(null);

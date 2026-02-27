@@ -75,15 +75,9 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
   const [sshKeyPath, setSshKeyPath] = useState('');
   const [sshError,   setSshError]   = useState<string | null>(null);
   const [sshCopied,  setSshCopied]  = useState<'idle' | ClipboardResult>('idle');
-  const sshCopyReadyRef = useRef(false);
-
-  // Reset copy state and guard delay when entering instructions phase
+  // Reset copy state when entering instructions phase
   useEffect(() => {
-    if (sshPhase !== 'instructions') return;
-    setSshCopied('idle');
-    sshCopyReadyRef.current = false;
-    const t = setTimeout(() => { sshCopyReadyRef.current = true; }, 200);
-    return () => clearTimeout(t);
+    if (sshPhase === 'instructions') setSshCopied('idle');
   }, [sshPhase]);
 
   const dispatchRef = useRef(dispatch);
@@ -264,7 +258,7 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
   // SSH instructions: C = copy key, Enter = verify
   useInput(
     (_char, key) => {
-      if (_char === 'c' && sshPubKey && sshCopyReadyRef.current) {
+      if (_char === 'c' && sshPubKey) {
         setSshCopied(copyToClipboard(sshPubKey));
       } else if (key.return) {
         void runSSHVerify(sshKeyPath);
