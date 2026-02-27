@@ -5,6 +5,7 @@ import { App } from './App.js';
 import { CliStartArgs } from './types/index.js';
 import { configExists, readConfig } from './services/config.js';
 import { setupVsCode } from './services/ide.js';
+import { checkAndUpdate } from './services/updater.js';
 
 // ── Help ─────────────────────────────────────────────────────────────────────
 const rawArgs = process.argv.slice(2);
@@ -130,6 +131,9 @@ if (startupArgs) {
     process.exit(1);
   }
 }
+
+// ── Auto-update ───────────────────────────────────────────────────────────────
+await checkAndUpdate();
 
 // ── Alternate screen buffer ───────────────────────────────────────────────────
 // Enter alternate screen + hide cursor before rendering anything
