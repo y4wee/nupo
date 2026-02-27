@@ -5,7 +5,7 @@ import { App } from './App.js';
 import { CliStartArgs } from './types/index.js';
 import { configExists, readConfig, patchConfig } from './services/config.js';
 import { setupVsCode } from './services/ide.js';
-import { performUpdateAndRestart } from './services/updater.js';
+import { spawn } from 'node:child_process';
 
 // ── Help ─────────────────────────────────────────────────────────────────────
 const rawArgs = process.argv.slice(2);
@@ -150,7 +150,12 @@ async function handleUpdate() {
   instance.unmount();
   cleanup();
   await patchConfig({ to_update: false });
-  performUpdateAndRestart();
+  // npm install already done by UpdateScreen — just restart
+  const child = spawn(process.argv[0]!, process.argv.slice(1), {
+    stdio: 'inherit',
+    env: process.env,
+  });
+  child.on('exit', code => process.exit(code ?? 0));
 }
 
 // Guarantee cleanup on every possible exit path

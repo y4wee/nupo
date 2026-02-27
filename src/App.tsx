@@ -10,6 +10,7 @@ import { InitScreen } from './screens/InitScreen.js';
 import { OdooScreen } from './screens/OdooScreen.js';
 import { ConfigScreen } from './screens/ConfigScreen.js';
 import { IdeScreen } from './screens/IdeScreen.js';
+import { UpdateScreen } from './screens/UpdateScreen.js';
 import { checkForUpdate } from './services/updater.js';
 import { patchConfig } from './services/config.js';
 
@@ -30,6 +31,7 @@ export function App({ onExit, onUpdate, startupArgs }: AppProps) {
   const [updateBanner,    setUpdateBanner]    = useState(false);
   const [updateConfirm,   setUpdateConfirm]   = useState(false);
   const [updateSel,       setUpdateSel]       = useState(1);
+  const [showUpdate,      setShowUpdate]      = useState(false);
 
   // Reposition to top-left whenever the box height changes (service start/stop)
   useEffect(() => {
@@ -104,11 +106,11 @@ export function App({ onExit, onUpdate, startupArgs }: AppProps) {
       if (key.leftArrow)  setUpdateSel(0);
       if (key.rightArrow) setUpdateSel(1);
       if (key.return) {
-        if (updateSel === 0) { onUpdate(); }
+        if (updateSel === 0) { setUpdateConfirm(false); setShowUpdate(true); }
         else { setUpdateConfirm(false); setUpdateSel(1); }
       }
       if (key.escape || char === 'n') { setUpdateConfirm(false); setUpdateSel(1); }
-      if (char === 'o' || char === 'y') onUpdate();
+      if (char === 'o' || char === 'y') { setUpdateConfirm(false); setShowUpdate(true); }
       return;
     }
 
@@ -155,6 +157,19 @@ export function App({ onExit, onUpdate, startupArgs }: AppProps) {
           </Text>
         </Box>
       </Box>
+    );
+  }
+
+  if (showUpdate) {
+    return (
+      <UpdateScreen
+        termWidth={termWidth}
+        primaryColor={primaryColor}
+        secondaryColor={secondaryColor}
+        textColor={textColor}
+        onComplete={onUpdate}
+        onError={() => setShowUpdate(false)}
+      />
     );
   }
 
