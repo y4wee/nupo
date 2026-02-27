@@ -1,6 +1,6 @@
 {
   "name": "nuprod-nupo",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "description": "nupo CLI - Odoo development environment manager",
   "type": "module",
   "repository": {
