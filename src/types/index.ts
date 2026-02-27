@@ -32,6 +32,7 @@ export interface NupoConfig {
   text_color?: string;
   cursor_color?: string;
   venv_installed?: boolean;
+  ssh_configured?: boolean;
   to_update?: boolean;
 }
 
@@ -77,7 +78,7 @@ export interface CliStartArgs {
 
 export type Screen = 'home' | 'init' | 'odoo' | 'ide' | 'config';
 export type StepStatus = 'pending' | 'running' | 'success' | 'error';
-export type InitStepId = 'python' | 'pip' | 'venv' | 'odoo_path';
+export type InitStepId = 'python' | 'pip' | 'venv' | 'check_ssh' | 'odoo_path';
 
 export interface InitStep {
   id: InitStepId;

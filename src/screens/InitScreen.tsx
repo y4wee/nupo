@@ -1,9 +1,9 @@
 import React, { useReducer, useEffect, useState, useCallback, useRef } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
 import { InitStep, InitStepId, StepStatus, NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
-import { checkPython, checkPip, checkVenv } from '../services/checks.js';
+import { checkPython, checkPip, checkVenv, checkSSH, generateSSHKey, verifySSHKey, addSSHConfig } from '../services/checks.js';
 import { patchConfig } from '../services/config.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { StepsPanel } from '../components/StepsPanel.js';
@@ -33,9 +33,10 @@ function stepsReducer(state: InitStep[], action: StepAction): InitStep[] {
 }
 
 const STEP_DEFS: { id: InitStepId; label: string }[] = [
-  { id: 'python',   label: 'Vérification de Python' },
-  { id: 'pip',      label: 'Vérification de pip' },
-  { id: 'venv',     label: 'Vérification de python venv' },
+  { id: 'python',    label: 'Vérification de Python' },
+  { id: 'pip',       label: 'Vérification de pip' },
+  { id: 'venv',      label: 'Vérification de python venv' },
+  { id: 'check_ssh', label: 'Connexion SSH GitHub' },
   { id: 'odoo_path', label: 'Chemin du dépôt Odoo' },
 ];
 
@@ -44,8 +45,9 @@ function findStartIndex(config: NupoConfig | null): number {
   if (!config.python_installed) return 0;
   if (!config.pip_installed) return 1;
   if (!config.venv_installed) return 2;
-  if (!config.odoo_path_repo) return 3;
-  return 4;
+  if (!config.ssh_configured) return 3;
+  if (!config.odoo_path_repo) return 4;
+  return 5;
 }
 
 function buildInitialSteps(startIndex: number): InitStep[] {
@@ -62,7 +64,15 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(startIndex);
   const [odooPath, setOdooPath] = useState('');
   const [waitingInput, setWaitingInput] = useState(false);
-  const [done, setDone] = useState(startIndex >= 4);
+  const [done, setDone] = useState(startIndex >= 5);
+
+  // SSH sub-flow
+  type SshPhase = 'choice' | 'generating' | 'instructions' | 'verifying';
+  const [sshPhase,   setSshPhase]   = useState<SshPhase | null>(null);
+  const [sshChoice,  setSshChoice]  = useState<0 | 1>(0); // 0=Non (default), 1=Oui
+  const [sshPubKey,  setSshPubKey]  = useState('');
+  const [sshKeyPath, setSshKeyPath] = useState('');
+  const [sshError,   setSshError]   = useState<string | null>(null);
 
   const dispatchRef = useRef(dispatch);
   dispatchRef.current = dispatch;
@@ -126,6 +136,54 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
     }
   }, []);
 
+  const advanceFromSSH = useCallback(async () => {
+    await patchConfig({ ssh_configured: true });
+    setCurrentStepIndex(4);
+  }, []);
+
+  const runSSH = useCallback(async () => {
+    dispatchRef.current({ type: 'SET_STATUS', id: 'check_ssh', status: 'running' });
+    const result = await checkSSH();
+    if (result.ok) {
+      dispatchRef.current({ type: 'SET_STATUS', id: 'check_ssh', status: 'success', errorMessage: 'connecté' });
+      await patchConfig({ ssh_configured: true });
+      setCurrentStepIndex(4);
+    } else {
+      // Non-blocking: show choice (default = Non)
+      setSshPhase('choice');
+      setSshChoice(0);
+    }
+  }, []);
+
+  const runSSHSetup = useCallback(async () => {
+    setSshPhase('generating');
+    const result = await generateSSHKey();
+    if (!result.ok || !result.publicKey || !result.keyPath) {
+      dispatchRef.current({ type: 'SET_STATUS', id: 'check_ssh', status: 'error', errorMessage: result.error });
+      setSshPhase(null);
+      return;
+    }
+    setSshPubKey(result.publicKey);
+    setSshKeyPath(result.keyPath);
+    setSshPhase('instructions');
+  }, []);
+
+  const runSSHVerify = useCallback(async (keyPath: string) => {
+    setSshPhase('verifying');
+    setSshError(null);
+    const result = await verifySSHKey(keyPath);
+    if (result.ok) {
+      await addSSHConfig(keyPath);
+      dispatchRef.current({ type: 'SET_STATUS', id: 'check_ssh', status: 'success', errorMessage: 'connecté' });
+      setSshPhase(null);
+      await patchConfig({ ssh_configured: true });
+      setCurrentStepIndex(4);
+    } else {
+      setSshError('Clé non reconnue par GitHub. Vérifiez que vous avez bien ajouté la clé.');
+      setSshPhase('instructions');
+    }
+  }, []);
+
   const runOdooPath = useCallback(async (inputPath: string) => {
     const resolvedPath = inputPath.trim() || process.cwd();
     setWaitingInput(false);
@@ -160,16 +218,43 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
     } else if (currentStepIndex === 2) {
       void runVenv();
     } else if (currentStepIndex === 3) {
+      void runSSH();
+    } else if (currentStepIndex === 4) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'odoo_path', status: 'running' });
       setWaitingInput(true);
     }
-  }, [currentStepIndex, runPython, runPip, runVenv]);
+  }, [currentStepIndex, runPython, runPip, runVenv, runSSH]);
 
   // Call onComplete once all steps are done
   useEffect(() => {
     if (!done) return;
     onCompleteRef.current();
   }, [done]);
+
+  // SSH choice navigation
+  useInput(
+    (_char, key) => {
+      if (key.leftArrow || key.rightArrow) setSshChoice(c => (c === 0 ? 1 : 0));
+      if (key.return) {
+        if (sshChoice === 1) {
+          void runSSHSetup();
+        } else {
+          dispatchRef.current({ type: 'SET_STATUS', id: 'check_ssh', status: 'success', errorMessage: 'ignoré' });
+          void advanceFromSSH();
+          setSshPhase(null);
+        }
+      }
+    },
+    { isActive: sshPhase === 'choice' },
+  );
+
+  // SSH instructions: Enter = verify
+  useInput(
+    (_char, key) => {
+      if (key.return) void runSSHVerify(sshKeyPath);
+    },
+    { isActive: sshPhase === 'instructions' },
+  );
 
   const errorStep = steps.find(s => s.status === 'error');
 
@@ -182,6 +267,55 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
           <Text color={getSecondaryColor(config)} bold>
             Initialisation
           </Text>
+
+          {/* SSH choice */}
+          {sshPhase === 'choice' && (
+            <Box flexDirection="column" gap={1} marginTop={1}>
+              <Text color="white">Connexion SSH GitHub non configurée.</Text>
+              <Text color={textColor}>Voulez-vous configurer une clé SSH ?</Text>
+              <Box gap={2}>
+                <Text
+                  color={sshChoice === 0 ? 'black' : textColor}
+                  backgroundColor={sshChoice === 0 ? getCursorColor(config) : undefined}
+                  bold={sshChoice === 0}
+                >{' Non '}</Text>
+                <Text
+                  color={sshChoice === 1 ? 'black' : textColor}
+                  backgroundColor={sshChoice === 1 ? getCursorColor(config) : undefined}
+                  bold={sshChoice === 1}
+                >{' Oui '}</Text>
+              </Box>
+              <Text color={textColor} dimColor>◀▶ choisir  ·  ↵ confirmer</Text>
+            </Box>
+          )}
+
+          {/* SSH key generation in progress */}
+          {sshPhase === 'generating' && (
+            <Box marginTop={1}>
+              <Text color={textColor} dimColor>⟳ Génération de la clé SSH…</Text>
+            </Box>
+          )}
+
+          {/* SSH instructions */}
+          {(sshPhase === 'instructions' || sshPhase === 'verifying') && (
+            <Box flexDirection="column" gap={1} marginTop={1}>
+              <Text color="white" bold>Clé SSH générée : <Text color={textColor} bold={false}>{sshKeyPath}.pub</Text></Text>
+              <Box flexDirection="column" gap={0}>
+                <Text color={getSecondaryColor(config)}>Copiez cette clé publique :</Text>
+                <Text color="cyan">{sshPubKey}</Text>
+              </Box>
+              <Box flexDirection="column" gap={0}>
+                <Text color="white">Puis ajoutez-la sur GitHub :</Text>
+                <Text color={textColor} dimColor>  1. github.com → Settings → SSH and GPG keys</Text>
+                <Text color={textColor} dimColor>  2. New SSH key → collez la clé → Save</Text>
+              </Box>
+              {sshError && <Text color="red">{sshError}</Text>}
+              {sshPhase === 'verifying'
+                ? <Text color={textColor} dimColor>⟳ Vérification en cours…</Text>
+                : <Text color={textColor} dimColor>↵ Vérifier la connexion une fois la clé ajoutée</Text>
+              }
+            </Box>
+          )}
 
           {waitingInput && !errorStep && (
             <Box flexDirection="column" gap={1} marginTop={1}>

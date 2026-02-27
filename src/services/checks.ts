@@ -1,4 +1,7 @@
 import { execFile } from 'node:child_process';
+import { homedir } from 'os';
+import { join } from 'path';
+import { readFile, access, mkdir, appendFile } from 'fs/promises';
 
 function execFileAsync(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -63,4 +66,67 @@ export async function checkVenv(): Promise<CheckResult> {
   const result2 = await tryCommand('python', ['-m', 'venv', '--help']);
   if (result2.ok) return { ok: true };
   return { ok: false, error: HINTS.venv };
+}
+
+// ── SSH ───────────────────────────────────────────────────────────────────────
+
+function sshTest(extraArgs: string[] = []): Promise<CheckResult> {
+  return new Promise(resolve => {
+    execFile(
+      'ssh',
+      ['-T', 'git@github.com', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=5', ...extraArgs],
+      (_err, stdout, stderr) => {
+        const output = String(stderr || stdout).trim();
+        if (output.includes('successfully authenticated')) resolve({ ok: true });
+        else resolve({ ok: false, error: output });
+      },
+    );
+  });
+}
+
+export async function checkSSH(): Promise<CheckResult> {
+  return sshTest();
+}
+
+export async function verifySSHKey(keyPath: string): Promise<CheckResult> {
+  return sshTest(['-i', keyPath]);
+}
+
+export async function generateSSHKey(): Promise<{ ok: boolean; publicKey?: string; keyPath?: string; error?: string }> {
+  const sshDir = join(homedir(), '.ssh');
+  const keyPath = join(sshDir, 'id_ed25519_nupo');
+  const pubKeyPath = keyPath + '.pub';
+
+  // Reuse existing key if present
+  try {
+    await access(pubKeyPath);
+    const pubKey = await readFile(pubKeyPath, 'utf-8');
+    return { ok: true, publicKey: pubKey.trim(), keyPath };
+  } catch { /* not found, generate */ }
+
+  try { await mkdir(sshDir, { recursive: true }); } catch { /* already exists */ }
+
+  return new Promise(resolve => {
+    execFile('ssh-keygen', ['-t', 'ed25519', '-C', 'nupo', '-f', keyPath, '-N', ''],
+      async err => {
+        if (err) { resolve({ ok: false, error: err.message }); return; }
+        try {
+          const pubKey = await readFile(pubKeyPath, 'utf-8');
+          resolve({ ok: true, publicKey: pubKey.trim(), keyPath });
+        } catch (e) {
+          resolve({ ok: false, error: String(e) });
+        }
+      },
+    );
+  });
+}
+
+export async function addSSHConfig(keyPath: string): Promise<void> {
+  const configPath = join(homedir(), '.ssh', 'config');
+  const entry = `\n# Added by nupo\nHost github.com\n  IdentityFile ${keyPath}\n  User git\n`;
+  try {
+    const content = await readFile(configPath, 'utf-8');
+    if (content.includes('github.com')) return;
+  } catch { /* file doesn't exist, will be created */ }
+  await appendFile(configPath, entry, 'utf-8');
 }
