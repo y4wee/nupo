@@ -121,6 +121,16 @@ export async function generateSSHKey(): Promise<{ ok: boolean; publicKey?: strin
   });
 }
 
+export async function readSSHPublicKey(): Promise<string | null> {
+  const keyPath = join(homedir(), '.ssh', 'id_ed25519_nupo.pub');
+  try {
+    const content = await readFile(keyPath, 'utf-8');
+    return content.trim();
+  } catch {
+    return null;
+  }
+}
+
 export async function addSSHConfig(keyPath: string): Promise<void> {
   const configPath = join(homedir(), '.ssh', 'config');
   const entry = `\n# Added by nupo\nHost github.com\n  IdentityFile ${keyPath}\n  User git\n`;

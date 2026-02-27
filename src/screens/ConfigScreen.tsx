@@ -4,9 +4,9 @@ import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
 import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { patchConfig, ensureBaseConf, getBaseConfPath } from '../services/config.js';
-import { openInEditor } from '../services/system.js';
+import { openInEditor, copyToClipboard } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
-import { checkSSH, generateSSHKey, verifySSHKey, addSSHConfig } from '../services/checks.js';
+import { checkSSH, generateSSHKey, verifySSHKey, addSSHConfig, readSSHPublicKey } from '../services/checks.js';
 
 // ── Item types ────────────────────────────────────────────────────────────────
 
@@ -130,11 +130,15 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
   const [sshPubKey, setSshPubKey] = useState('');
   const [sshKeyPath, setSshKeyPath] = useState('');
   const [sshError, setSshError]   = useState<string | null>(null);
+  const [sshCopied, setSshCopied] = useState(false);
 
   const startSSHCheck = useCallback(async () => {
     setSshPhase('checking');
     const result = await checkSSH();
     if (result.ok) {
+      const pubKey = await readSSHPublicKey();
+      if (pubKey) setSshPubKey(pubKey);
+      setSshCopied(false);
       setSshPhase('success');
     } else {
       setSshPhase('choice');
@@ -153,6 +157,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
     setSshPubKey(result.publicKey);
     setSshKeyPath(result.keyPath);
     setSshError(null);
+    setSshCopied(false);
     setSshPhase('instructions');
   }, []);
 
@@ -187,15 +192,27 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
         if (key.escape) setSshPhase(null);
         return;
       }
-      // SSH instructions: Enter = verify
+      // SSH instructions: C copies key, Enter = verify
       if (sshPhase === 'instructions') {
-        if (key.return) void runSSHVerify(sshKeyPath);
-        if (key.escape) setSshPhase(null);
+        if (_char === 'c' && sshPubKey) {
+          const ok = copyToClipboard(sshPubKey);
+          if (ok) setSshCopied(true);
+        } else if (key.return) {
+          void runSSHVerify(sshKeyPath);
+        } else if (key.escape) {
+          setSshPhase(null);
+        }
         return;
       }
-      // SSH success or checking: any key returns to list
+      // SSH success: C copies key, anything else returns to list
       if (sshPhase === 'success') {
-        setSshPhase(null);
+        if (_char === 'c' && sshPubKey) {
+          const ok = copyToClipboard(sshPubKey);
+          if (ok) setSshCopied(true);
+        } else {
+          setSshPhase(null);
+          setSshPubKey('');
+        }
         return;
       }
       if (sshPhase !== null) return; // checking / generating / verifying: block input
@@ -301,7 +318,18 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
             {sshPhase === 'success' && (
               <Box flexDirection="column" gap={1}>
                 <Text color="green" bold>✓ Connexion SSH GitHub opérationnelle</Text>
-                <Text color={textColor} dimColor>↵ ou Échap pour revenir</Text>
+                {sshPubKey ? (
+                  <Box flexDirection="column" gap={0}>
+                    <Text color={getSecondaryColor(config)}>Clé publique :</Text>
+                    <Text color="cyan">{sshPubKey}</Text>
+                    {sshCopied
+                      ? <Text color="green">✓ Copié dans le presse-papier !</Text>
+                      : <Text color={textColor} dimColor>C copier la clé  ·  toute autre touche pour revenir</Text>
+                    }
+                  </Box>
+                ) : (
+                  <Text color={textColor} dimColor>toute touche pour revenir</Text>
+                )}
               </Box>
             )}
 
@@ -336,6 +364,10 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                 <Box flexDirection="column" gap={0}>
                   <Text color={getSecondaryColor(config)}>Copiez cette clé publique :</Text>
                   <Text color="cyan">{sshPubKey}</Text>
+                  {sshCopied
+                    ? <Text color="green">✓ Copié dans le presse-papier !</Text>
+                    : <Text color={textColor} dimColor>C copier la clé</Text>
+                  }
                 </Box>
                 <Box flexDirection="column" gap={0}>
                   <Text color="white">Puis ajoutez-la sur GitHub :</Text>

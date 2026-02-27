@@ -23,3 +23,16 @@ export function openInEditor(filePath: string): void {
 export function runInTerminal(cmd: string, args: string[]): void {
   withRawModeDisabled(() => spawnSync(cmd, args, { stdio: 'inherit' }));
 }
+
+export function copyToClipboard(text: string): boolean {
+  const isMac = process.platform === 'darwin';
+  if (isMac) {
+    const r = spawnSync('pbcopy', [], { input: text });
+    return r.status === 0;
+  }
+  // Linux: try xclip then xsel
+  let r = spawnSync('xclip', ['-selection', 'clipboard'], { input: text });
+  if (r.status === 0) return true;
+  r = spawnSync('xsel', ['--clipboard', '--input'], { input: text });
+  return r.status === 0;
+}
