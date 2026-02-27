@@ -25,14 +25,28 @@ export function runInTerminal(cmd: string, args: string[]): void {
 }
 
 export function copyToClipboard(text: string): boolean {
-  const isMac = process.platform === 'darwin';
-  if (isMac) {
+  // macOS
+  if (process.platform === 'darwin') {
     const r = spawnSync('pbcopy', [], { input: text });
-    return r.status === 0;
+    if (r.status === 0) return true;
+  } else {
+    // Wayland
+    if (process.env['WAYLAND_DISPLAY']) {
+      const r = spawnSync('wl-copy', [], { input: text });
+      if (r.status === 0) return true;
+    }
+    // X11
+    let r = spawnSync('xclip', ['-selection', 'clipboard'], { input: text });
+    if (r.status === 0) return true;
+    r = spawnSync('xsel', ['--clipboard', '--input'], { input: text });
+    if (r.status === 0) return true;
   }
-  // Linux: try xclip then xsel
-  let r = spawnSync('xclip', ['-selection', 'clipboard'], { input: text });
-  if (r.status === 0) return true;
-  r = spawnSync('xsel', ['--clipboard', '--input'], { input: text });
-  return r.status === 0;
+  // Fallback: OSC 52 terminal escape sequence (kitty, alacritty, WezTerm, iTerm2…)
+  try {
+    const b64 = Buffer.from(text).toString('base64');
+    process.stdout.write(`\x1b]52;c;${b64}\x07`);
+    return true;
+  } catch {
+    return false;
+  }
 }
