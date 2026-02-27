@@ -1,5 +1,5 @@
 {
-  "name": "@y4wee/nupo",
+  "name": "nuprod-nupo",
   "version": "0.2.2",
   "description": "nupo CLI - Odoo development environment manager",
   "type": "module",
