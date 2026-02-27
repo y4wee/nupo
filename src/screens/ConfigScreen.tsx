@@ -201,22 +201,13 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       if (sshPhase === 'instructions') {
         if (_char === 'c' && sshPubKey) {
           setSshCopied(copyToClipboard(sshPubKey));
-        } else {
+        } else if (key.return) {
+          void runSSHVerify(sshKeyPath);
+        } else if (key.escape) {
           setSshPhase(null);
-          setSshPubKey('');
         }
         return;
       }
-      // if (sshPhase === 'instructions') {
-      //   if (_char === 'c' && sshPubKey) {
-      //     setSshCopied(copyToClipboard(sshPubKey));
-      //   } else if (key.return) {
-      //     void runSSHVerify(sshKeyPath);
-      //   } else if (key.escape) {
-      //     setSshPhase(null);
-      //   }
-      //   return;
-      // }
       // SSH success: C copies key, anything else returns to list
       if (sshPhase === 'success') {
         if (_char === 'c' && sshPubKey) {
