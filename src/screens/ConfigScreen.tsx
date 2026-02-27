@@ -325,9 +325,9 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                   <Box flexDirection="column" gap={0}>
                     <Text color={getSecondaryColor(config)}>Clé publique :</Text>
                     <Text color="cyan">{sshPubKey}</Text>
-                    {sshCopied === 'ok'      && <Text color="green">✓ Copié dans le presse-papier !</Text>}
-                  {sshCopied === 'no_tool' && <Text color="yellow">Installez xclip pour la copie auto :  sudo apt install xclip</Text>}
-                  {sshCopied === 'idle'    && <Text color={textColor} dimColor>C copier la clé  ·  toute autre touche pour revenir</Text>}
+                    {sshCopied === 'ok'     && <Text color="green">✓ Copié dans le presse-papier !</Text>}
+                  {sshCopied === 'failed' && <Text color={textColor} dimColor>Sélectionnez le texte cyan ci-dessus pour copier</Text>}
+                  {sshCopied === 'idle'   && <Text color={textColor} dimColor>C copier la clé  ·  toute autre touche pour revenir</Text>}
                   </Box>
                 ) : (
                   <Text color={textColor} dimColor>toute touche pour revenir</Text>
@@ -366,9 +366,9 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                 <Box flexDirection="column" gap={0}>
                   <Text color={getSecondaryColor(config)}>Copiez cette clé publique :</Text>
                   <Text color="cyan">{sshPubKey}</Text>
-                  {sshCopied === 'ok'      && <Text color="green">✓ Copié dans le presse-papier !</Text>}
-                  {sshCopied === 'no_tool' && <Text color="yellow">Installez xclip pour la copie auto :  sudo apt install xclip</Text>}
-                  {sshCopied === 'idle'    && <Text color={textColor} dimColor>C copier la clé</Text>}
+                  {sshCopied === 'ok'     && <Text color="green">✓ Copié dans le presse-papier !</Text>}
+                  {sshCopied === 'failed' && <Text color={textColor} dimColor>Sélectionnez le texte cyan ci-dessus pour copier</Text>}
+                  {sshCopied === 'idle'   && <Text color={textColor} dimColor>C copier la clé</Text>}
                 </Box>
                 <Box flexDirection="column" gap={0}>
                   <Text color="white">Puis ajoutez-la sur GitHub :</Text>
