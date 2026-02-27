@@ -5,6 +5,7 @@ import { access } from 'fs/promises';
 import { InitStep, InitStepId, StepStatus, NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { checkPython, checkPip, checkVenv, checkSSH, generateSSHKey, verifySSHKey, addSSHConfig } from '../services/checks.js';
 import { patchConfig } from '../services/config.js';
+import { copyToClipboard } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { StepsPanel } from '../components/StepsPanel.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
@@ -73,6 +74,7 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
   const [sshPubKey,  setSshPubKey]  = useState('');
   const [sshKeyPath, setSshKeyPath] = useState('');
   const [sshError,   setSshError]   = useState<string | null>(null);
+  const [sshCopied,  setSshCopied]  = useState<'idle' | 'ok' | 'error'>('idle');
 
   const dispatchRef = useRef(dispatch);
   dispatchRef.current = dispatch;
@@ -165,6 +167,7 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
     }
     setSshPubKey(result.publicKey);
     setSshKeyPath(result.keyPath);
+    setSshCopied('idle');
     setSshPhase('instructions');
   }, []);
 
@@ -248,10 +251,14 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
     { isActive: sshPhase === 'choice' },
   );
 
-  // SSH instructions: Enter = verify
+  // SSH instructions: C = copy key, Enter = verify
   useInput(
     (_char, key) => {
-      if (key.return) void runSSHVerify(sshKeyPath);
+      if (_char === 'c' && sshPubKey) {
+        setSshCopied(copyToClipboard(sshPubKey) ? 'ok' : 'error');
+      } else if (key.return) {
+        void runSSHVerify(sshKeyPath);
+      }
     },
     { isActive: sshPhase === 'instructions' },
   );
@@ -303,6 +310,9 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
               <Box flexDirection="column" gap={0}>
                 <Text color={getSecondaryColor(config)}>Copiez cette clé publique :</Text>
                 <Text color="cyan">{sshPubKey}</Text>
+                {sshCopied === 'ok'    && <Text color="green">✓ Copié dans le presse-papier !</Text>}
+                {sshCopied === 'error' && <Text color="yellow">Copiez la clé manuellement (sélectionnez le texte cyan ci-dessus)</Text>}
+                {sshCopied === 'idle'  && <Text color={textColor} dimColor>C copier la clé</Text>}
               </Box>
               <Box flexDirection="column" gap={0}>
                 <Text color="white">Puis ajoutez-la sur GitHub :</Text>
@@ -312,7 +322,7 @@ export function InitScreen({ config, leftWidth, onComplete }: InitScreenProps) {
               {sshError && <Text color="red">{sshError}</Text>}
               {sshPhase === 'verifying'
                 ? <Text color={textColor} dimColor>⟳ Vérification en cours…</Text>
-                : <Text color={textColor} dimColor>↵ Vérifier la connexion une fois la clé ajoutée</Text>
+                : <Text color={textColor} dimColor>↵ Vérifier la connexion une fois la clé ajoutée  ·  C copier</Text>
               }
             </Box>
           )}
