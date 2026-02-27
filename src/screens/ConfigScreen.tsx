@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
@@ -131,6 +131,16 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
   const [sshKeyPath, setSshKeyPath] = useState('');
   const [sshError, setSshError]   = useState<string | null>(null);
   const [sshCopied, setSshCopied] = useState<'idle' | 'ok' | 'error'>('idle');
+  const sshCopyReadyRef = useRef(false);
+
+  // Reset copy state and add guard delay when entering instructions phase
+  useEffect(() => {
+    if (sshPhase !== 'instructions' && sshPhase !== 'success') return;
+    setSshCopied('idle');
+    sshCopyReadyRef.current = false;
+    const t = setTimeout(() => { sshCopyReadyRef.current = true; }, 200);
+    return () => clearTimeout(t);
+  }, [sshPhase]);
 
   const startSSHCheck = useCallback(async () => {
     setSshPhase('checking');
@@ -195,7 +205,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       }
       // SSH instructions: C copies key, Enter = verify
       if (sshPhase === 'instructions') {
-        if (_char === 'c' && sshPubKey) {
+        if (_char === 'c' && sshPubKey && sshCopyReadyRef.current) {
           const ok = copyToClipboard(sshPubKey);
           setSshCopied(ok ? 'ok' : 'error');
         } else if (key.return) {
@@ -207,7 +217,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       }
       // SSH success: C copies key, anything else returns to list
       if (sshPhase === 'success') {
-        if (_char === 'c' && sshPubKey) {
+        if (_char === 'c' && sshPubKey && sshCopyReadyRef.current) {
           const ok = copyToClipboard(sshPubKey);
           setSshCopied(ok ? 'ok' : 'error');
         } else {
