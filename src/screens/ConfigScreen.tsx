@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
@@ -6,6 +6,7 @@ import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursor
 import { patchConfig, ensureBaseConf, getBaseConfPath } from '../services/config.js';
 import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
+import { checkSSH, generateSSHKey, verifySSHKey, addSSHConfig } from '../services/checks.js';
 
 // ── Item types ────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,12 @@ const ITEMS: ConfigItem[] = [
     label: 'Conf Odoo de base',
     description: `Template de configuration utilisé lors de la création des services Odoo.\nFichier : ${getBaseConfPath()}`,
   },
+  {
+    type: 'action',
+    id: 'ssh_github',
+    label: 'SSH GitHub',
+    description: 'Tester ou configurer la connexion SSH GitHub utilisée pour cloner les dépôts privés.',
+  },
 ];
 
 type EditState =
@@ -109,11 +116,60 @@ interface ConfigScreenProps {
   onSaved: () => void;
 }
 
+type SshPhase = 'checking' | 'success' | 'choice' | 'generating' | 'instructions' | 'verifying';
+
 export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScreenProps) {
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
   const [selected, setSelected] = useState(0);
   const [edit, setEdit] = useState<EditState>({ active: false });
+
+  // SSH sub-flow
+  const [sshPhase, setSshPhase]   = useState<SshPhase | null>(null);
+  const [sshChoice, setSshChoice] = useState<0 | 1>(0);
+  const [sshPubKey, setSshPubKey] = useState('');
+  const [sshKeyPath, setSshKeyPath] = useState('');
+  const [sshError, setSshError]   = useState<string | null>(null);
+
+  const startSSHCheck = useCallback(async () => {
+    setSshPhase('checking');
+    const result = await checkSSH();
+    if (result.ok) {
+      setSshPhase('success');
+    } else {
+      setSshPhase('choice');
+      setSshChoice(0);
+    }
+  }, []);
+
+  const runSSHSetup = useCallback(async () => {
+    setSshPhase('generating');
+    const result = await generateSSHKey();
+    if (!result.ok || !result.publicKey || !result.keyPath) {
+      setSshPhase('choice');
+      setSshError(result.error ?? 'Erreur lors de la génération de la clé.');
+      return;
+    }
+    setSshPubKey(result.publicKey);
+    setSshKeyPath(result.keyPath);
+    setSshError(null);
+    setSshPhase('instructions');
+  }, []);
+
+  const runSSHVerify = useCallback(async (keyPath: string) => {
+    setSshPhase('verifying');
+    setSshError(null);
+    const result = await verifySSHKey(keyPath);
+    if (result.ok) {
+      await addSSHConfig(keyPath);
+      await patchConfig({ ssh_configured: true });
+      onSaved();
+      setSshPhase('success');
+    } else {
+      setSshError('Clé non reconnue par GitHub. Vérifiez que vous avez bien ajouté la clé.');
+      setSshPhase('instructions');
+    }
+  }, [onSaved]);
 
   useInput(
     (_char, key) => {
@@ -121,6 +177,29 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
         if (key.escape) setEdit({ active: false });
         return;
       }
+      // SSH choice navigation
+      if (sshPhase === 'choice') {
+        if (key.leftArrow || key.rightArrow) setSshChoice(c => (c === 0 ? 1 : 0));
+        if (key.return) {
+          if (sshChoice === 1) { void runSSHSetup(); }
+          else { setSshPhase(null); }
+        }
+        if (key.escape) setSshPhase(null);
+        return;
+      }
+      // SSH instructions: Enter = verify
+      if (sshPhase === 'instructions') {
+        if (key.return) void runSSHVerify(sshKeyPath);
+        if (key.escape) setSshPhase(null);
+        return;
+      }
+      // SSH success or checking: any key returns to list
+      if (sshPhase === 'success') {
+        setSshPhase(null);
+        return;
+      }
+      if (sshPhase !== null) return; // checking / generating / verifying: block input
+
       if (key.upArrow)   setSelected(prev => (prev - 1 + ITEMS.length) % ITEMS.length);
       if (key.downArrow) setSelected(prev => (prev + 1) % ITEMS.length);
       if (key.return) {
@@ -137,6 +216,8 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
           void ensureBaseConf().then(() => {
             openInEditor(getBaseConfPath());
           });
+        } else if (item.type === 'action' && item.id === 'ssh_github') {
+          void startSSHCheck();
         }
       }
       if (key.escape) onBack();
@@ -174,13 +255,18 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
         <Text color={getSecondaryColor(config)} bold>Paramètres</Text>
 
         {/* Liste */}
-        {!edit.active && (
+        {!edit.active && sshPhase === null && (
           <Box flexDirection="column" marginTop={1} gap={0}>
             {ITEMS.map((item, i) => {
               const isSel = i === selected;
-              const value = item.type === 'config'
-                ? (String(config[item.key] ?? '') || '(non défini)')
-                : '↵ ouvrir dans $EDITOR';
+              let value: string;
+              if (item.type === 'config') {
+                value = String(config[item.key] ?? '') || '(non défini)';
+              } else if (item.id === 'ssh_github') {
+                value = config.ssh_configured ? '✓ configurée' : '↵ tester';
+              } else {
+                value = '↵ ouvrir dans $EDITOR';
+              }
               return (
                 <Box key={item.type === 'config' ? item.key : item.id} flexDirection="row" gap={1}>
                   <Text
@@ -190,13 +276,79 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                   >
                     {` ${isSel ? '▶' : ' '} ${item.label}`}
                   </Text>
-                  <Text color={textColor} dimColor>{value}</Text>
+                  <Text
+                    color={item.type === 'action' && item.id === 'ssh_github' && config.ssh_configured ? 'green' : textColor}
+                    dimColor={!(item.type === 'action' && item.id === 'ssh_github' && config.ssh_configured)}
+                  >
+                    {value}
+                  </Text>
                   {item.type === 'config' && item.key.endsWith('_color') && config[item.key] && (
                     <Text color={String(config[item.key])}>●</Text>
                   )}
                 </Box>
               );
             })}
+          </Box>
+        )}
+
+        {/* SSH flow */}
+        {sshPhase !== null && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            {sshPhase === 'checking' && (
+              <Text color={textColor} dimColor>⟳ Test de la connexion SSH GitHub…</Text>
+            )}
+
+            {sshPhase === 'success' && (
+              <Box flexDirection="column" gap={1}>
+                <Text color="green" bold>✓ Connexion SSH GitHub opérationnelle</Text>
+                <Text color={textColor} dimColor>↵ ou Échap pour revenir</Text>
+              </Box>
+            )}
+
+            {sshPhase === 'choice' && (
+              <Box flexDirection="column" gap={1}>
+                <Text color="white">Connexion SSH GitHub non configurée.</Text>
+                <Text color={textColor}>Voulez-vous configurer une clé SSH ?</Text>
+                {sshError && <Text color="red">{sshError}</Text>}
+                <Box gap={2}>
+                  <Text
+                    color={sshChoice === 0 ? 'black' : textColor}
+                    backgroundColor={sshChoice === 0 ? getCursorColor(config) : undefined}
+                    bold={sshChoice === 0}
+                  >{' Non '}</Text>
+                  <Text
+                    color={sshChoice === 1 ? 'black' : textColor}
+                    backgroundColor={sshChoice === 1 ? getCursorColor(config) : undefined}
+                    bold={sshChoice === 1}
+                  >{' Oui '}</Text>
+                </Box>
+                <Text color={textColor} dimColor>◀▶ choisir  ·  ↵ confirmer  ·  Échap annuler</Text>
+              </Box>
+            )}
+
+            {sshPhase === 'generating' && (
+              <Text color={textColor} dimColor>⟳ Génération de la clé SSH…</Text>
+            )}
+
+            {(sshPhase === 'instructions' || sshPhase === 'verifying') && (
+              <Box flexDirection="column" gap={1}>
+                <Text color="white" bold>Clé SSH générée : <Text color={textColor} bold={false}>{sshKeyPath}.pub</Text></Text>
+                <Box flexDirection="column" gap={0}>
+                  <Text color={getSecondaryColor(config)}>Copiez cette clé publique :</Text>
+                  <Text color="cyan">{sshPubKey}</Text>
+                </Box>
+                <Box flexDirection="column" gap={0}>
+                  <Text color="white">Puis ajoutez-la sur GitHub :</Text>
+                  <Text color={textColor} dimColor>  1. github.com → Settings → SSH and GPG keys</Text>
+                  <Text color={textColor} dimColor>  2. New SSH key → collez la clé → Save</Text>
+                </Box>
+                {sshError && <Text color="red">{sshError}</Text>}
+                {sshPhase === 'verifying'
+                  ? <Text color={textColor} dimColor>⟳ Vérification en cours…</Text>
+                  : <Text color={textColor} dimColor>↵ Vérifier la connexion une fois la clé ajoutée  ·  Échap annuler</Text>
+                }
+              </Box>
+            )}
           </Box>
         )}
 
@@ -232,16 +384,18 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
         )}
 
         {/* Aide */}
-        <Box marginTop={1}>
-          {edit.active ? (
-            <Text color={textColor} dimColor>↵ sauvegarder  ·  Échap annuler</Text>
-          ) : (
-            <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ modifier  ·  Échap retour</Text>
-          )}
-        </Box>
+        {sshPhase === null && (
+          <Box marginTop={1}>
+            {edit.active ? (
+              <Text color={textColor} dimColor>↵ sauvegarder  ·  Échap annuler</Text>
+            ) : (
+              <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ modifier  ·  Échap retour</Text>
+            )}
+          </Box>
+        )}
 
         {/* Description */}
-        {!edit.active && (
+        {!edit.active && sshPhase === null && (
           <Box borderStyle="round" borderColor={textColor} paddingX={1} paddingY={0}>
             <Text color={textColor} wrap="wrap">{currentItem.description}</Text>
           </Box>
