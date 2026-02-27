@@ -324,7 +324,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                     <Text color={getSecondaryColor(config)}>Clé publique :</Text>
                     <Text color="cyan">{sshPubKey}</Text>
                     {sshCopied === 'ok'    && <Text color="green">✓ Copié dans le presse-papier !</Text>}
-                  {sshCopied === 'error' && <Text color="red">Impossible de copier (xclip/xsel non trouvé)</Text>}
+                  {sshCopied === 'error' && <Text color="yellow">Copiez la clé manuellement (sélectionnez le texte cyan ci-dessus)</Text>}
                   {sshCopied === 'idle'  && <Text color={textColor} dimColor>C copier la clé  ·  toute autre touche pour revenir</Text>}
                   </Box>
                 ) : (
@@ -365,7 +365,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                   <Text color={getSecondaryColor(config)}>Copiez cette clé publique :</Text>
                   <Text color="cyan">{sshPubKey}</Text>
                   {sshCopied === 'ok'    && <Text color="green">✓ Copié dans le presse-papier !</Text>}
-                  {sshCopied === 'error' && <Text color="red">Impossible de copier (xclip/xsel non trouvé)</Text>}
+                  {sshCopied === 'error' && <Text color="yellow">Copiez la clé manuellement (sélectionnez le texte cyan ci-dessus)</Text>}
                   {sshCopied === 'idle'  && <Text color={textColor} dimColor>C copier la clé</Text>}
                 </Box>
                 <Box flexDirection="column" gap={0}>
