@@ -1,5 +1,4 @@
 import { spawnSync } from 'child_process';
-import { openSync, writeSync, closeSync } from 'fs';
 import clipboard from 'clipboardy';
 
 type RawStdin = NodeJS.ReadStream & { setRawMode?: (mode: boolean) => void };
@@ -26,22 +25,13 @@ export function runInTerminal(cmd: string, args: string[]): void {
   withRawModeDisabled(() => spawnSync(cmd, args, { stdio: 'inherit' }));
 }
 
-export function copyToClipboard(text: string): boolean {
-  // Try native clipboard tools via clipboardy (xclip, xsel, wl-copy, pbcopy…)
+export type ClipboardResult = 'ok' | 'no_tool';
+
+export function copyToClipboard(text: string): ClipboardResult {
   try {
     clipboard.writeSync(text);
-    return true;
-  } catch { /* no native tool available, fall through */ }
-
-  // Fallback: OSC 52 written directly to /dev/tty, bypassing Ink's stdout
-  try {
-    const b64 = Buffer.from(text).toString('base64');
-    const seq = `\x1b]52;c;${b64}\x07`;
-    const fd = openSync('/dev/tty', 'w');
-    writeSync(fd, seq);
-    closeSync(fd);
-    return true;
+    return 'ok';
   } catch {
-    return false;
+    return 'no_tool';
   }
 }

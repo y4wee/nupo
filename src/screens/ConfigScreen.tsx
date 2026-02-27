@@ -4,7 +4,7 @@ import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
 import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { patchConfig, ensureBaseConf, getBaseConfPath } from '../services/config.js';
-import { openInEditor, copyToClipboard } from '../services/system.js';
+import { openInEditor, copyToClipboard, ClipboardResult } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { checkSSH, generateSSHKey, verifySSHKey, addSSHConfig, readSSHPublicKey, getActiveSSHKeyPath } from '../services/checks.js';
 
@@ -130,7 +130,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
   const [sshPubKey, setSshPubKey] = useState('');
   const [sshKeyPath, setSshKeyPath] = useState('');
   const [sshError, setSshError]   = useState<string | null>(null);
-  const [sshCopied, setSshCopied] = useState<'idle' | 'ok' | 'error'>('idle');
+  const [sshCopied, setSshCopied] = useState<'idle' | ClipboardResult>('idle');
   const sshCopyReadyRef = useRef(false);
 
   // Reset copy state and add guard delay when entering instructions phase
@@ -206,8 +206,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       // SSH instructions: C copies key, Enter = verify
       if (sshPhase === 'instructions') {
         if (_char === 'c' && sshPubKey && sshCopyReadyRef.current) {
-          const ok = copyToClipboard(sshPubKey);
-          setSshCopied(ok ? 'ok' : 'error');
+          setSshCopied(copyToClipboard(sshPubKey));
         } else if (key.return) {
           void runSSHVerify(sshKeyPath);
         } else if (key.escape) {
@@ -218,8 +217,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       // SSH success: C copies key, anything else returns to list
       if (sshPhase === 'success') {
         if (_char === 'c' && sshPubKey && sshCopyReadyRef.current) {
-          const ok = copyToClipboard(sshPubKey);
-          setSshCopied(ok ? 'ok' : 'error');
+          setSshCopied(copyToClipboard(sshPubKey));
         } else {
           setSshPhase(null);
           setSshPubKey('');
@@ -333,9 +331,9 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                   <Box flexDirection="column" gap={0}>
                     <Text color={getSecondaryColor(config)}>Clé publique :</Text>
                     <Text color="cyan">{sshPubKey}</Text>
-                    {sshCopied === 'ok'    && <Text color="green">✓ Copié dans le presse-papier !</Text>}
-                  {sshCopied === 'error' && <Text color="yellow">Copiez la clé manuellement (sélectionnez le texte cyan ci-dessus)</Text>}
-                  {sshCopied === 'idle'  && <Text color={textColor} dimColor>C copier la clé  ·  toute autre touche pour revenir</Text>}
+                    {sshCopied === 'ok'      && <Text color="green">✓ Copié dans le presse-papier !</Text>}
+                  {sshCopied === 'no_tool' && <Text color="yellow">Installez xclip pour la copie auto :  sudo apt install xclip</Text>}
+                  {sshCopied === 'idle'    && <Text color={textColor} dimColor>C copier la clé  ·  toute autre touche pour revenir</Text>}
                   </Box>
                 ) : (
                   <Text color={textColor} dimColor>toute touche pour revenir</Text>
@@ -374,9 +372,9 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                 <Box flexDirection="column" gap={0}>
                   <Text color={getSecondaryColor(config)}>Copiez cette clé publique :</Text>
                   <Text color="cyan">{sshPubKey}</Text>
-                  {sshCopied === 'ok'    && <Text color="green">✓ Copié dans le presse-papier !</Text>}
-                  {sshCopied === 'error' && <Text color="yellow">Copiez la clé manuellement (sélectionnez le texte cyan ci-dessus)</Text>}
-                  {sshCopied === 'idle'  && <Text color={textColor} dimColor>C copier la clé</Text>}
+                  {sshCopied === 'ok'      && <Text color="green">✓ Copié dans le presse-papier !</Text>}
+                  {sshCopied === 'no_tool' && <Text color="yellow">Installez xclip pour la copie auto :  sudo apt install xclip</Text>}
+                  {sshCopied === 'idle'    && <Text color={textColor} dimColor>C copier la clé</Text>}
                 </Box>
                 <Box flexDirection="column" gap={0}>
                   <Text color="white">Puis ajoutez-la sur GitHub :</Text>
