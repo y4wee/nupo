@@ -26,16 +26,17 @@
     "install:local": "npm run build && mkdir -p $HOME/.local/bin && ln -sf $(pwd)/dist/index.js $HOME/.local/bin/nupo && chmod +x dist/index.js && echo 'nupo installé dans ~/.local/bin/nupo'"
   },
   "dependencies": {
+    "chalk": "^5.3.0",
+    "clipboardy": "^5.3.1",
     "ink": "^5.1.0",
     "ink-text-input": "^6.0.0",
-    "react": "^18.3.1",
-    "chalk": "^5.3.0"
+    "react": "^18.3.1"
   },
   "devDependencies": {
-    "@types/react": "^18.3.1",
     "@types/node": "^20.0.0",
-    "typescript": "^5.4.0",
+    "@types/react": "^18.3.1",
     "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
     "vitest": "^2.0.0"
   }
 }

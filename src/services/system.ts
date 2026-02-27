@@ -1,4 +1,5 @@
 import { spawnSync } from 'child_process';
+import clipboard from 'clipboardy';
 
 type RawStdin = NodeJS.ReadStream & { setRawMode?: (mode: boolean) => void };
 
@@ -25,16 +26,10 @@ export function runInTerminal(cmd: string, args: string[]): void {
 }
 
 export function copyToClipboard(text: string): boolean {
-  // macOS
-  if (process.platform === 'darwin') {
-    return spawnSync('pbcopy', [], { input: text }).status === 0;
+  try {
+    clipboard.writeSync(text);
+    return true;
+  } catch {
+    return false;
   }
-  // Wayland
-  if (process.env['WAYLAND_DISPLAY']) {
-    if (spawnSync('wl-copy', [], { input: text }).status === 0) return true;
-  }
-  // X11
-  if (spawnSync('xclip', ['-selection', 'clipboard'], { input: text }).status === 0) return true;
-  if (spawnSync('xsel', ['--clipboard', '--input'], { input: text }).status === 0) return true;
-  return false;
 }
