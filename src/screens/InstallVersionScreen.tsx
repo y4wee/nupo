@@ -90,6 +90,8 @@ export function InstallVersionScreen({
   const [branchName, setBranchName] = useState('');
   const [versionPath, setVersionPath] = useState('');
   const [done, setDone] = useState(false);
+  const [hasEnterprise, setHasEnterprise] = useState(false);
+  const hasEnterpriseRef = useRef(false);
   const [cloneProgress, setCloneProgress] = useState<GitProgress | null>(null);
   const [pipOutput, setPipOutput] = useState<string>('');
   const [retryCount, setRetryCount] = useState(0);
@@ -275,12 +277,16 @@ export function InstallVersionScreen({
     dispatchRef.current({ type: 'SET_STATUS', id: 'check_enterprise', status: 'running' });
     const r = await checkBranch(ODOO_ENTERPRISE_URL, branchNameRef.current);
     if (r.ok) {
+      hasEnterpriseRef.current = true;
+      setHasEnterprise(true);
       dispatchRef.current({ type: 'SET_STATUS', id: 'check_enterprise', status: 'success' });
-      void saveProgressRef.current('check_enterprise');
-      setCurrentStepIndex(3);
     } else {
-      dispatchRef.current({ type: 'SET_STATUS', id: 'check_enterprise', status: 'error', errorMessage: r.error });
+      hasEnterpriseRef.current = false;
+      setHasEnterprise(false);
+      dispatchRef.current({ type: 'SET_STATUS', id: 'check_enterprise', status: 'success', errorMessage: 'non disponible (ignoré)' });
     }
+    void saveProgressRef.current('check_enterprise');
+    setCurrentStepIndex(3);
   }, []);
 
   const runCreateDir = useCallback(async () => {
@@ -330,6 +336,12 @@ export function InstallVersionScreen({
   }, []);
 
   const runCloneEnterprise = useCallback(async () => {
+    if (!hasEnterpriseRef.current) {
+      dispatchRef.current({ type: 'SET_STATUS', id: 'clone_enterprise', status: 'success', errorMessage: 'ignoré' });
+      void saveProgressRef.current('clone_enterprise');
+      setCurrentStepIndex(6);
+      return;
+    }
     dispatchRef.current({ type: 'SET_STATUS', id: 'clone_enterprise', status: 'running' });
     setCloneProgress(null);
     const dest = join(versionPathRef.current, 'enterprise');
@@ -603,7 +615,9 @@ export function InstallVersionScreen({
               </Text>
               <Box flexDirection="column" gap={0}>
                 <Text color={textColor} dimColor>{`  community/  → ${join(versionPath, 'community')}`}</Text>
-                <Text color={textColor} dimColor>{`  enterprise/ → ${join(versionPath, 'enterprise')}`}</Text>
+                {hasEnterprise && (
+                  <Text color={textColor} dimColor>{`  enterprise/ → ${join(versionPath, 'enterprise')}`}</Text>
+                )}
                 <Text color={textColor} dimColor>{`  .venv/      → ${join(versionPath, '.venv')}`}</Text>
                 <Text color={textColor} dimColor>{`  custom/`}</Text>
                 <Text color={textColor} dimColor>{`  config/`}</Text>
