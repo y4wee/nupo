@@ -122,13 +122,20 @@ export async function generateSSHKey(): Promise<{ ok: boolean; publicKey?: strin
 }
 
 export async function readSSHPublicKey(): Promise<string | null> {
-  const keyPath = join(homedir(), '.ssh', 'id_ed25519_nupo.pub');
-  try {
-    const content = await readFile(keyPath, 'utf-8');
-    return content.trim();
-  } catch {
-    return null;
+  const candidates = [
+    'id_ed25519_nupo.pub',
+    'id_ed25519.pub',
+    'id_rsa.pub',
+    'id_ecdsa.pub',
+    'id_dsa.pub',
+  ];
+  for (const name of candidates) {
+    try {
+      const content = await readFile(join(homedir(), '.ssh', name), 'utf-8');
+      return content.trim();
+    } catch { /* try next */ }
   }
+  return null;
 }
 
 export async function addSSHConfig(keyPath: string): Promise<void> {
