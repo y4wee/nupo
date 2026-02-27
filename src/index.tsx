@@ -3,9 +3,9 @@ import React from 'react';
 import { render } from 'ink';
 import { App } from './App.js';
 import { CliStartArgs } from './types/index.js';
-import { configExists, readConfig } from './services/config.js';
+import { configExists, readConfig, patchConfig } from './services/config.js';
 import { setupVsCode } from './services/ide.js';
-import { checkAndUpdate } from './services/updater.js';
+import { performUpdateAndRestart } from './services/updater.js';
 
 // ── Help ─────────────────────────────────────────────────────────────────────
 const rawArgs = process.argv.slice(2);
@@ -132,9 +132,6 @@ if (startupArgs) {
   }
 }
 
-// ── Auto-update ───────────────────────────────────────────────────────────────
-await checkAndUpdate();
-
 // ── Alternate screen buffer ───────────────────────────────────────────────────
 // Enter alternate screen + hide cursor before rendering anything
 process.stdout.write('\x1B[?1049h\x1B[?25l');
@@ -146,6 +143,14 @@ function cleanup() {
   cleanedUp = true;
   // Restore main screen buffer + show cursor
   process.stdout.write('\x1B[?1049l\x1B[?25h');
+}
+
+async function handleUpdate() {
+  instance.clear();
+  instance.unmount();
+  cleanup();
+  await patchConfig({ to_update: false });
+  performUpdateAndRestart();
 }
 
 // Guarantee cleanup on every possible exit path
@@ -172,7 +177,7 @@ function handleExit() {
   cleanup();
 }
 
-instance = render(<App onExit={handleExit} startupArgs={startupArgs ?? undefined} />, {
+instance = render(<App onExit={handleExit} onUpdate={() => { void handleUpdate(); }} startupArgs={startupArgs ?? undefined} />, {
   exitOnCtrlC: false,
 });
 

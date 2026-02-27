@@ -32,6 +32,7 @@ export interface NupoConfig {
   text_color?: string;
   cursor_color?: string;
   venv_installed?: boolean;
+  to_update?: boolean;
 }
 
 export const DEFAULT_CONFIG: NupoConfig = {

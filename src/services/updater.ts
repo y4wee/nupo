@@ -40,28 +40,27 @@ function isNewer(latest: string, current: string): boolean {
   return lPatch > cPatch;
 }
 
-export async function checkAndUpdate(): Promise<void> {
+/** Vérifie si une version plus récente est disponible sur npm. */
+export async function checkForUpdate(): Promise<boolean> {
   const latest = await fetchLatestVersion();
-  if (!latest || !isNewer(latest, currentVersion)) return;
+  if (!latest) return false;
+  return isNewer(latest, currentVersion);
+}
 
-  process.stdout.write(`\n  Mise à jour disponible : ${currentVersion} → ${latest}\n`);
-  process.stdout.write(`  Installation en cours…\n\n`);
-
+/** Lance npm install -g puis respawn le process courant. À appeler après cleanup Ink. */
+export function performUpdateAndRestart(): void {
+  process.stdout.write('\n  Mise à jour en cours…\n\n');
   try {
     execFileSync('npm', ['install', '-g', packageName], { stdio: 'inherit' });
   } catch {
-    process.stdout.write(`\n  Échec de la mise à jour — démarrage avec la version actuelle.\n\n`);
-    return;
+    process.stdout.write('\n  Échec de la mise à jour.\n');
+    process.exit(1);
   }
 
-  process.stdout.write(`\n  Redémarrage…\n\n`);
-
+  process.stdout.write('\n  Redémarrage…\n\n');
   const child = spawn(process.argv[0]!, process.argv.slice(1), {
     stdio: 'inherit',
     env: process.env,
   });
-
-  await new Promise<void>(resolve => {
-    child.on('exit', code => { process.exit(code ?? 0); resolve(); });
-  });
+  child.on('exit', code => process.exit(code ?? 0));
 }

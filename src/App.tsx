@@ -10,13 +10,16 @@ import { InitScreen } from './screens/InitScreen.js';
 import { OdooScreen } from './screens/OdooScreen.js';
 import { ConfigScreen } from './screens/ConfigScreen.js';
 import { IdeScreen } from './screens/IdeScreen.js';
+import { checkForUpdate } from './services/updater.js';
+import { patchConfig } from './services/config.js';
 
 interface AppProps {
   onExit: () => void;
+  onUpdate: () => void;
   startupArgs?: CliStartArgs;
 }
 
-export function App({ onExit, startupArgs }: AppProps) {
+export function App({ onExit, onUpdate, startupArgs }: AppProps) {
   const { columns, rows } = useTerminalSize();
   const { config, loading, refresh } = useConfig();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -24,6 +27,9 @@ export function App({ onExit, startupArgs }: AppProps) {
   const [confirmSelected, setConfirmSelected] = useState(1);
   const [serviceRunning,  setServiceRunning]  = useState(false);
   const [activeService,   setActiveService]   = useState<OdooServiceConfig | null>(null);
+  const [updateBanner,    setUpdateBanner]    = useState(false);
+  const [updateConfirm,   setUpdateConfirm]   = useState(false);
+  const [updateSel,       setUpdateSel]       = useState(1);
 
   // Reposition to top-left whenever the box height changes (service start/stop)
   useEffect(() => {
@@ -36,6 +42,20 @@ export function App({ onExit, startupArgs }: AppProps) {
       setCurrentScreen('odoo');
     }
   }, [loading, config?.initiated, startupArgs]);
+
+  // Update check: show banner immediately if flagged, otherwise check in background
+  useEffect(() => {
+    if (loading) return;
+    if (config?.to_update) {
+      setUpdateBanner(true);
+      return;
+    }
+    void checkForUpdate().then(hasUpdate => {
+      if (!hasUpdate) return;
+      void patchConfig({ to_update: true });
+      setUpdateBanner(true);
+    });
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const primaryColor = getPrimaryColor(config);
   const secondaryColor = getSecondaryColor(config);
@@ -78,8 +98,20 @@ export function App({ onExit, startupArgs }: AppProps) {
     [config],
   );
 
-  // Global input: handles Ctrl+C and confirm-exit dialog on all screens
+  // Global input: handles Ctrl+C, Ctrl+U and confirm dialogs on all screens
   useInput((char, key) => {
+    if (updateConfirm) {
+      if (key.leftArrow)  setUpdateSel(0);
+      if (key.rightArrow) setUpdateSel(1);
+      if (key.return) {
+        if (updateSel === 0) { onUpdate(); }
+        else { setUpdateConfirm(false); setUpdateSel(1); }
+      }
+      if (key.escape || char === 'n') { setUpdateConfirm(false); setUpdateSel(1); }
+      if (char === 'o' || char === 'y') onUpdate();
+      return;
+    }
+
     if (confirmExit) {
       if (key.leftArrow) setConfirmSelected(0);
       if (key.rightArrow) setConfirmSelected(1);
@@ -90,6 +122,12 @@ export function App({ onExit, startupArgs }: AppProps) {
       }
       if (char === 'o' || char === 'y') onExit();
       if (key.ctrl && char === 'c') onExit();
+      return;
+    }
+
+    if (key.ctrl && char === 'u' && updateBanner) {
+      setUpdateConfirm(true);
+      setUpdateSel(1);
       return;
     }
 
@@ -123,6 +161,15 @@ export function App({ onExit, startupArgs }: AppProps) {
   return (
     <Box borderStyle="round" borderColor={primaryColor} flexDirection="column" width={termWidth} height={serviceRunning ? rows : undefined}>
       <Header activeService={activeService} serviceRunning={serviceRunning} primaryColor={primaryColor} secondaryColor={secondaryColor} />
+
+      {updateBanner && (
+        <Box paddingX={3} paddingY={0} borderStyle="single" borderTop={false} borderLeft={false} borderRight={false} borderColor={secondaryColor}>
+          <Text color={secondaryColor}>{'⬆ '}</Text>
+          <Text color={textColor}>Mise à jour disponible — </Text>
+          <Text color={secondaryColor} bold>Ctrl+U</Text>
+          <Text color={textColor}> pour mettre à jour</Text>
+        </Box>
+      )}
 
       {currentScreen === 'home' && (
         <HomeScreen
@@ -175,6 +222,15 @@ export function App({ onExit, startupArgs }: AppProps) {
       )}
 
       <ConfirmExit visible={confirmExit} selected={confirmSelected} textColor={textColor} cursorColor={cursorColor} />
+
+      {updateConfirm && (
+        <Box paddingX={3} paddingY={0} borderStyle="single" borderTop={true} borderBottom={false} borderLeft={false} borderRight={false} borderColor={secondaryColor}>
+          <Text color={secondaryColor}>Mettre à jour et redémarrer nupo ? </Text>
+          <Text color={updateSel === 0 ? 'black' : textColor} backgroundColor={updateSel === 0 ? secondaryColor : undefined} bold={updateSel === 0}>{' Oui '}</Text>
+          <Text>  </Text>
+          <Text color={updateSel === 1 ? 'black' : textColor} backgroundColor={updateSel === 1 ? cursorColor : undefined} bold={updateSel === 1}>{' Non '}</Text>
+        </Box>
+      )}
     </Box>
   );
 }
