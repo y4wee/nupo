@@ -130,7 +130,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
   const [sshPubKey, setSshPubKey] = useState('');
   const [sshKeyPath, setSshKeyPath] = useState('');
   const [sshError, setSshError]   = useState<string | null>(null);
-  const [sshCopied, setSshCopied] = useState(false);
+  const [sshCopied, setSshCopied] = useState<'idle' | 'ok' | 'error'>('idle');
 
   const startSSHCheck = useCallback(async () => {
     setSshPhase('checking');
@@ -139,7 +139,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       const keyPath = await getActiveSSHKeyPath();
       const pubKey = await readSSHPublicKey(keyPath);
       if (pubKey) setSshPubKey(pubKey);
-      setSshCopied(false);
+      setSshCopied('idle');
       setSshPhase('success');
     } else {
       setSshPhase('choice');
@@ -158,7 +158,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
     setSshPubKey(result.publicKey);
     setSshKeyPath(result.keyPath);
     setSshError(null);
-    setSshCopied(false);
+    setSshCopied('idle');
     setSshPhase('instructions');
   }, []);
 
@@ -197,7 +197,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       if (sshPhase === 'instructions') {
         if (_char === 'c' && sshPubKey) {
           const ok = copyToClipboard(sshPubKey);
-          if (ok) setSshCopied(true);
+          setSshCopied(ok ? 'ok' : 'error');
         } else if (key.return) {
           void runSSHVerify(sshKeyPath);
         } else if (key.escape) {
@@ -209,7 +209,7 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
       if (sshPhase === 'success') {
         if (_char === 'c' && sshPubKey) {
           const ok = copyToClipboard(sshPubKey);
-          if (ok) setSshCopied(true);
+          setSshCopied(ok ? 'ok' : 'error');
         } else {
           setSshPhase(null);
           setSshPubKey('');
@@ -323,10 +323,9 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                   <Box flexDirection="column" gap={0}>
                     <Text color={getSecondaryColor(config)}>Clé publique :</Text>
                     <Text color="cyan">{sshPubKey}</Text>
-                    {sshCopied
-                      ? <Text color="green">✓ Copié dans le presse-papier !</Text>
-                      : <Text color={textColor} dimColor>C copier la clé  ·  toute autre touche pour revenir</Text>
-                    }
+                    {sshCopied === 'ok'    && <Text color="green">✓ Copié dans le presse-papier !</Text>}
+                  {sshCopied === 'error' && <Text color="red">Impossible de copier (xclip/xsel non trouvé)</Text>}
+                  {sshCopied === 'idle'  && <Text color={textColor} dimColor>C copier la clé  ·  toute autre touche pour revenir</Text>}
                   </Box>
                 ) : (
                   <Text color={textColor} dimColor>toute touche pour revenir</Text>
@@ -365,10 +364,9 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
                 <Box flexDirection="column" gap={0}>
                   <Text color={getSecondaryColor(config)}>Copiez cette clé publique :</Text>
                   <Text color="cyan">{sshPubKey}</Text>
-                  {sshCopied
-                    ? <Text color="green">✓ Copié dans le presse-papier !</Text>
-                    : <Text color={textColor} dimColor>C copier la clé</Text>
-                  }
+                  {sshCopied === 'ok'    && <Text color="green">✓ Copié dans le presse-papier !</Text>}
+                  {sshCopied === 'error' && <Text color="red">Impossible de copier (xclip/xsel non trouvé)</Text>}
+                  {sshCopied === 'idle'  && <Text color={textColor} dimColor>C copier la clé</Text>}
                 </Box>
                 <Box flexDirection="column" gap={0}>
                   <Text color="white">Puis ajoutez-la sur GitHub :</Text>
