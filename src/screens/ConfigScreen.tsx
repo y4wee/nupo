@@ -6,7 +6,7 @@ import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursor
 import { patchConfig, ensureBaseConf, getBaseConfPath } from '../services/config.js';
 import { openInEditor, copyToClipboard } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
-import { checkSSH, generateSSHKey, verifySSHKey, addSSHConfig, readSSHPublicKey } from '../services/checks.js';
+import { checkSSH, generateSSHKey, verifySSHKey, addSSHConfig, readSSHPublicKey, getActiveSSHKeyPath } from '../services/checks.js';
 
 // ── Item types ────────────────────────────────────────────────────────────────
 
@@ -136,7 +136,8 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
     setSshPhase('checking');
     const result = await checkSSH();
     if (result.ok) {
-      const pubKey = await readSSHPublicKey();
+      const keyPath = await getActiveSSHKeyPath();
+      const pubKey = await readSSHPublicKey(keyPath);
       if (pubKey) setSshPubKey(pubKey);
       setSshCopied(false);
       setSshPhase('success');

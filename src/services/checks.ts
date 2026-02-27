@@ -88,6 +88,20 @@ export async function checkSSH(): Promise<CheckResult> {
   return sshTest();
 }
 
+/** Returns the path (without .pub) of the key accepted by GitHub, or null. */
+export async function getActiveSSHKeyPath(): Promise<string | null> {
+  return new Promise(resolve => {
+    execFile(
+      'ssh',
+      ['-T', 'git@github.com', '-v', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=5'],
+      (_err, _stdout, stderr) => {
+        const match = String(stderr).match(/Server accepts key:\s+(\S+)/);
+        resolve(match?.[1] ?? null);
+      },
+    );
+  });
+}
+
 export async function verifySSHKey(keyPath: string): Promise<CheckResult> {
   return sshTest(['-i', keyPath]);
 }
@@ -121,19 +135,12 @@ export async function generateSSHKey(): Promise<{ ok: boolean; publicKey?: strin
   });
 }
 
-export async function readSSHPublicKey(): Promise<string | null> {
-  const candidates = [
-    'id_ed25519_nupo.pub',
-    'id_ed25519.pub',
-    'id_rsa.pub',
-    'id_ecdsa.pub',
-    'id_dsa.pub',
-  ];
-  for (const name of candidates) {
+export async function readSSHPublicKey(keyPath?: string | null): Promise<string | null> {
+  if (keyPath) {
     try {
-      const content = await readFile(join(homedir(), '.ssh', name), 'utf-8');
+      const content = await readFile(keyPath + '.pub', 'utf-8');
       return content.trim();
-    } catch { /* try next */ }
+    } catch { /* fall through */ }
   }
   return null;
 }
