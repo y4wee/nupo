@@ -94,12 +94,10 @@ if (rawArgs[0] === 'code') {
   const LABELS: Record<string, string> = {
     vscode_dir:    'Dossier .vscode',
     settings_json: 'settings.json  ',
-    launch_json:   'launch.json    ',
     open_vscode:   'Ouvrir VS Code ',
   };
 
-  const services = Object.values(cfg.odoo_services ?? {});
-  const ok = await setupVsCode(version, services, (id, status, detail) => {
+  const ok = await setupVsCode(version, (id, status, detail) => {
     const icon  = status === 'running' ? '…' : status === 'success' ? '✓' : '✗';
     const label = LABELS[id] ?? id;
     const info  = detail ? `  ${detail}` : '';

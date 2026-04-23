@@ -55,9 +55,17 @@ function injectHttpPort(conf: string, branch: string): string {
   return lines.join('\n');
 }
 
-async function generateConfContent(branch: string): Promise<string> {
-  const baseConf = await readBaseConf();
-  return injectHttpPort(baseConf, branch);
+function injectDataDir(conf: string, versionPath: string): string {
+  const line = `data_dir = ${versionPath}`;
+  const lines = conf.split('\n');
+  const idx = lines.findIndex(l => l.trimStart().startsWith('data_dir'));
+  if (idx >= 0) lines[idx] = line;
+  return lines.join('\n');
+}
+
+async function generateConfContent(branch: string, versionPath: string): Promise<string> {
+  const baseConf = await readBaseConf(versionPath);
+  return injectDataDir(injectHttpPort(baseConf, branch), versionPath);
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -136,7 +144,7 @@ export function ConfigureServiceScreen({
       confPath,
     };
     await mkdir(join(opts.version.path, 'config'), { recursive: true });
-    await writeFile(confPath, await generateConfContent(opts.version.branch), 'utf-8');
+    await writeFile(confPath, await generateConfContent(opts.version.branch, opts.version.path), 'utf-8');
 
     const current = await readConfig();
     const services = { ...(current.odoo_services ?? {}) };

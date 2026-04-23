@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { PathInput } from '../components/PathInput.js';
 import { access } from 'fs/promises';
 import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
-import { patchConfig, ensureBaseConf, getBaseConfPath } from '../services/config.js';
+import { patchConfig, ensureBaseConf, getBaseConfPath, migrateOdooPath } from '../services/config.js';
 import { openInEditor, copyToClipboard, ClipboardResult } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { checkSSH, generateSSHKey, verifySSHKey, addSSHConfig, readSSHPublicKey, getActiveSSHKeyPath } from '../services/checks.js';
@@ -260,7 +260,16 @@ export function ConfigScreen({ config, leftWidth, onBack, onSaved }: ConfigScree
     }
 
     const value = item.transform ? item.transform(trimmed) : trimmed;
-    await patchConfig({ [item.key]: value } as Partial<NupoConfig>);
+    if (item.key === 'odoo_path_repo') {
+      const oldPath = String(config.odoo_path_repo ?? '');
+      if (oldPath && oldPath !== value) {
+        await migrateOdooPath(oldPath, value as string);
+      } else {
+        await patchConfig({ [item.key]: value } as Partial<NupoConfig>);
+      }
+    } else {
+      await patchConfig({ [item.key]: value } as Partial<NupoConfig>);
+    }
     setEdit({ active: false });
     onSaved();
   };

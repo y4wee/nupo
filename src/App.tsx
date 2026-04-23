@@ -9,6 +9,7 @@ import { HomeScreen } from './screens/HomeScreen.js';
 import { InitScreen } from './screens/InitScreen.js';
 import { OdooScreen } from './screens/OdooScreen.js';
 import { ConfigScreen } from './screens/ConfigScreen.js';
+import { DatabaseScreen } from './screens/DatabaseScreen.js';
 import { IdeScreen } from './screens/IdeScreen.js';
 import { UpdateScreen } from './screens/UpdateScreen.js';
 import { checkForUpdate } from './services/updater.js';
@@ -80,6 +81,13 @@ export function App({ onExit, onUpdate, startupArgs }: AppProps) {
           label: 'Odoo',
           description: 'Accédez aux outils Odoo : démarrage, migration, gestion des modules.',
           screen: 'odoo' as Screen,
+          visible: config?.initiated === true,
+        },
+        {
+          id: 'database',
+          label: 'Base de Données',
+          description: 'Gérer les bases de données : restauration depuis un dump .zip.',
+          screen: 'database' as Screen,
           visible: config?.initiated === true,
         },
         {
@@ -216,6 +224,14 @@ export function App({ onExit, onUpdate, startupArgs }: AppProps) {
           onServiceRunning={svc => { setServiceRunning(true); setActiveService(svc); }}
           onServiceStopped={() => { setServiceRunning(false); setActiveService(null); }}
           autoStart={startupArgs}
+        />
+      )}
+
+      {currentScreen === 'database' && config && (
+        <DatabaseScreen
+          config={config}
+          leftWidth={leftWidth}
+          onBack={() => setCurrentScreen('home')}
         />
       )}
 

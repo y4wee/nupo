@@ -12,7 +12,7 @@ interface IdeScreenProps {
 
 type IdeView = 'select' | 'setup';
 
-type SetupStepId = 'vscode_dir' | 'settings_json' | 'launch_json' | 'open_vscode';
+type SetupStepId = 'vscode_dir' | 'settings_json' | 'open_vscode';
 
 interface SetupStep {
   id: SetupStepId;
@@ -24,7 +24,6 @@ interface SetupStep {
 const INITIAL_STEPS: SetupStep[] = [
   { id: 'vscode_dir',    label: 'Dossier .vscode', status: 'pending' },
   { id: 'settings_json', label: 'settings.json',   status: 'pending' },
-  { id: 'launch_json',   label: 'launch.json',     status: 'pending' },
   { id: 'open_vscode',   label: 'Ouvrir VS Code',  status: 'pending' },
 ];
 
@@ -44,7 +43,6 @@ const STATUS_COLORS: Record<StepStatus, string> = {
 
 export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
   const versions = Object.values(config.odoo_versions ?? {});
-  const services = Object.values(config.odoo_services ?? {});
 
   const [view,     setView]     = useState<IdeView>('select');
   const [selected, setSelected] = useState(0);
@@ -66,7 +64,7 @@ export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
     setDone(false);
     setError(null);
 
-    const ok = await setupVsCode(version, services, (id, status, detail) => {
+    const ok = await setupVsCode(version, (id, status, detail) => {
       patchStep(id as IdeStepId, { status: status as StepStatus, detail });
       if (status === 'error') setError(detail ?? 'Erreur inconnue');
     });
