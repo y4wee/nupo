@@ -16,7 +16,7 @@ interface StartServiceScreenProps {
   autoStart?: CliStartArgs;
 }
 
-type Step = 'select' | 'args_list' | 'input_db' | 'input_module' | 'input_install' | 'running';
+type Step = 'select' | 'args_list' | 'input_db' | 'input_module' | 'input_install' | 'select_dev' | 'running';
 
 const ARGS_ITEMS = [
   { key: 'shell'           as const, label: 'shell',             type: 'toggle' as const },
@@ -24,7 +24,18 @@ const ARGS_ITEMS = [
   { key: 'module'          as const, label: '-u <module>',       type: 'input'  as const },
   { key: 'install'         as const, label: '-i <module>',       type: 'input'  as const },
   { key: 'stop_after_init' as const, label: '--stop-after-init', type: 'toggle' as const },
+  { key: 'dev'             as const, label: '--dev',             type: 'submenu' as const },
   { key: 'launch'          as const, label: 'Lancer →',          type: 'action' as const },
+];
+
+const DEV_OPTIONS: { key: string; label: string; description: string }[] = [
+  { key: 'all',      label: 'all',      description: 'alias pour xml, reload, qweb, access' },
+  { key: 'xml',      label: 'xml',      description: 'lire les templates QWeb depuis les fichiers XML' },
+  { key: 'reload',   label: 'reload',   description: 'redémarrer si un fichier Python est modifié' },
+  { key: 'qweb',     label: 'qweb',     description: 'breakpoint dans l\'évaluation QWeb (t-debug)' },
+  { key: 'werkzeug', label: 'werkzeug', description: 'afficher la trace complète en cas d\'exception' },
+  { key: 'replica',  label: 'replica',  description: 'simuler --db_replica_host sur le même serveur' },
+  { key: 'access',   label: 'access',   description: 'logger la trace sur les erreurs 403 (AccessError)' },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -43,7 +54,7 @@ function buildAddonsPaths(service: OdooServiceConfig): string[] {
 
 function buildLaunchCmd(
   service: OdooServiceConfig,
-  opts: { shell: boolean; db: string; module: string; install: string; stopAfterInit: boolean },
+  opts: { shell: boolean; db: string; module: string; install: string; stopAfterInit: boolean; devFeatures: string[] },
 ): { cmd: string; args: string[] } {
   const python  = join(service.versionPath, '.venv', 'bin', 'python3');
   const odooBin = join(service.versionPath, 'community', 'odoo-bin');
@@ -56,6 +67,7 @@ function buildLaunchCmd(
   if (opts.module)        args.push('-u', opts.module);
   if (opts.install)       args.push('-i', opts.install);
   if (opts.stopAfterInit) args.push('--stop-after-init');
+  if (opts.devFeatures.length > 0) args.push('--dev', opts.devFeatures.join(','));
 
   return { cmd: python, args };
 }
@@ -101,12 +113,14 @@ export function StartServiceScreen({
   const [step,       setStep]       = useState<Step>('select');
   const [selected,   setSelected]   = useState(0);
   const [argsCursor, setArgsCursor] = useState(0);
+  const [devCursor,  setDevCursor]  = useState(0);
 
   const [useShell,      setUseShell]      = useState(false);
   const [dbName,        setDbName]        = useState('');
   const [moduleName,    setModuleName]    = useState('');
   const [installName,   setInstallName]   = useState('');
   const [stopAfterInit, setStopAfterInit] = useState(false);
+  const [devFeatures,   setDevFeatures]   = useState<string[]>([]);
   const [inputValue,    setInputValue]    = useState('');
 
   const [logs,         setLogs]         = useState<string[]>([]);
@@ -142,11 +156,11 @@ export function StartServiceScreen({
 
   const launchService = (
     svc?: OdooServiceConfig,
-    overrideOpts?: { shell: boolean; db: string; module: string; install: string; stopAfterInit: boolean },
+    overrideOpts?: { shell: boolean; db: string; module: string; install: string; stopAfterInit: boolean; devFeatures: string[] },
   ) => {
     const target = svc ?? service;
     if (!target) return;
-    const opts = overrideOpts ?? { shell: useShell, db: dbName, module: moduleName, install: installName, stopAfterInit };
+    const opts = overrideOpts ?? { shell: useShell, db: dbName, module: moduleName, install: installName, stopAfterInit, devFeatures };
 
     activeServiceRef.current = target;
     setLogs([]);
@@ -199,6 +213,7 @@ export function StartServiceScreen({
       module:        autoStart.module        ?? '',
       install:       autoStart.install       ?? '',
       stopAfterInit: autoStart.stopAfterInit,
+      devFeatures:   [],
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -225,6 +240,7 @@ export function StartServiceScreen({
         case 'db':      setInputValue(dbName);      setStep('input_db');      break;
         case 'module':  setInputValue(moduleName);  setStep('input_module');  break;
         case 'install': setInputValue(installName); setStep('input_install'); break;
+        case 'dev':     setDevCursor(0);            setStep('select_dev');    break;
         case 'launch':  launchService(); break;
       }
     }
@@ -241,6 +257,24 @@ export function StartServiceScreen({
   useInput((_char, key) => {
     if (key.escape) setStep('args_list');
   }, { isActive: step === 'input_install' });
+
+  useInput((char, key) => {
+    if (key.escape) { setStep('args_list'); return; }
+    if (key.upArrow)   setDevCursor(p => Math.max(0, p - 1));
+    if (key.downArrow) setDevCursor(p => Math.min(DEV_OPTIONS.length - 1, p + 1));
+    if (key.return || char === ' ') {
+      const opt = DEV_OPTIONS[devCursor]!;
+      setDevFeatures(prev => {
+        if (opt.key === 'all') {
+          // toggling 'all' clears individual selections
+          return prev.includes('all') ? [] : ['all'];
+        }
+        // toggling an individual feature removes 'all' if present
+        const without = prev.filter(f => f !== 'all' && f !== opt.key);
+        return prev.includes(opt.key) ? without : [...without, opt.key];
+      });
+    }
+  }, { isActive: step === 'select_dev' });
 
   useInput((char, key) => {
     if (exitCode !== null) {
@@ -322,8 +356,14 @@ export function StartServiceScreen({
     module:          !!moduleName,
     install:         !!installName,
     stop_after_init: stopAfterInit,
+    dev:             devFeatures.length > 0,
   };
-  const argDisplay: Record<string, string> = { db: dbName, module: moduleName, install: installName };
+  const argDisplay: Record<string, string> = {
+    db:     dbName,
+    module: moduleName,
+    install: installName,
+    dev:    devFeatures.length > 0 ? devFeatures.join(',') : '',
+  };
 
   const activeService = activeServiceRef.current;
 
@@ -484,6 +524,39 @@ export function StartServiceScreen({
             )}
             <Box marginTop={1}>
               <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵/Espace basculer  ·  Échap retour</Text>
+            </Box>
+          </Box>
+        )}
+
+        {/* ── select_dev ── */}
+        {step === 'select_dev' && (
+          <Box flexDirection="column" gap={0} marginTop={1}>
+            <Text color="white">Options --dev <Text color={textColor} dimColor>(plusieurs sélections possibles)</Text></Text>
+            <Box flexDirection="column" gap={0} marginTop={1}>
+              {DEV_OPTIONS.map((opt, i) => {
+                const isSel     = i === devCursor;
+                const isChecked = devFeatures.includes(opt.key);
+                return (
+                  <Box key={opt.key} flexDirection="row" gap={1}>
+                    <Text
+                      color={isSel ? 'black' : 'white'}
+                      backgroundColor={isSel ? cursorColor : undefined}
+                      bold={isSel}
+                    >
+                      {` ${isSel ? '▶' : ' '} ${isChecked ? '[✓]' : '[ ]'} ${opt.label}`}
+                    </Text>
+                    <Text color={textColor} dimColor>{opt.description}</Text>
+                  </Box>
+                );
+              })}
+            </Box>
+            {devFeatures.length > 0 && (
+              <Box marginTop={1}>
+                <Text color={getPrimaryColor(config)}>--dev {devFeatures.join(',')}</Text>
+              </Box>
+            )}
+            <Box marginTop={1}>
+              <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵/Espace cocher  ·  Échap valider</Text>
             </Box>
           </Box>
         )}
