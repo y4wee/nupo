@@ -404,10 +404,10 @@ export function InstallVersionScreen({
     const base = versionPathRef.current;
     const branch = branchNameRef.current;
     try {
-      await mkdir(join(base, 'custom'),     { recursive: true });
-      await mkdir(join(base, 'config'),     { recursive: true });
-      await mkdir(join(base, 'dumps'),      { recursive: true });
-      await mkdir(join(base, 'filestore'),  { recursive: true });
+      await mkdir(join(base, 'custom'),              { recursive: true });
+      await mkdir(join(base, 'config'),              { recursive: true });
+      await mkdir(join(base, 'dumps'),               { recursive: true });
+      await mkdir(join(base, 'datas', 'filestore'),  { recursive: true });
       const current = await readConfig();
       // Remove from pending_installs and add to odoo_versions atomically
       const { [branch]: _removed, ...restPending } = current.pending_installs ?? {};
@@ -624,7 +624,8 @@ export function InstallVersionScreen({
                 <Text color={textColor} dimColor>{`  custom/`}</Text>
                 <Text color={textColor} dimColor>{`  config/`}</Text>
                 <Text color={textColor} dimColor>{`  dumps/`}</Text>
-                <Text color={textColor} dimColor>{`  filestore/`}</Text>
+                <Text color={textColor} dimColor>{`  datas/`}</Text>
+                <Text color={textColor} dimColor>{`    filestore/`}</Text>
               </Box>
               <Text color="white">{'Échap retour'}</Text>
             </Box>

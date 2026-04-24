@@ -235,7 +235,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     if (hasFilestore) {
       update('copy_filestore', 'running');
       const srcFilestore = join(tempDir, 'filestore');
-      const destFilestore = join(version.path, 'filestore');
+      const destFilestore = join(version.path, 'datas', 'filestore');
       const cpResult = await copyFilestore(srcFilestore, destFilestore);
       if (!cpResult.ok) {
         update('copy_filestore', 'error', cpResult.error);

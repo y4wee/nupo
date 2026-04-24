@@ -106,7 +106,7 @@ export function getBaseConfPath(): string {
 }
 
 function getOdooDataDir(versionPath?: string): string {
-  if (versionPath) return versionPath;
+  if (versionPath) return join(versionPath, 'datas');
   if (process.platform === 'darwin') {
     return join(homedir(), 'Library', 'Application Support', 'Odoo');
   }

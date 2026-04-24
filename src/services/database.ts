@@ -198,7 +198,7 @@ export interface FilestoreEntry {
 export async function listFilestoreDatabases(versions: OdooVersion[]): Promise<FilestoreEntry[]> {
   const result: FilestoreEntry[] = [];
   for (const v of versions) {
-    const fsDir = join(v.path, 'filestore');
+    const fsDir = join(v.path, 'datas', 'filestore');
     try {
       const entries = await readdir(fsDir, { withFileTypes: true });
       for (const e of entries) {
