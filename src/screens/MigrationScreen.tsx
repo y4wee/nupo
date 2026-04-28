@@ -62,7 +62,7 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
   // Load databases
   useEffect(() => {
     void listFilestoreDatabases(Object.values(config.odoo_versions ?? {})).then(list => {
-      setDatabases(list);
+      setDatabases(list.filter(db => targetVersions(db.versionBranch).length > 0));
       setDbSel(0);
       setDbLoading(false);
     });
@@ -198,26 +198,22 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
                 <Box flexDirection="column" gap={0}>
                   {databases.map((db, i) => {
                     const isSel = i === dbSel;
-                    const noTargets = targetVersions(db.versionBranch).length === 0;
                     return (
                       <Box key={`${db.versionBranch}/${db.dbName}`} flexDirection="row">
                         <Text
-                          color={noTargets ? 'gray' : isSel ? 'black' : 'white'}
-                          backgroundColor={isSel && !noTargets ? cursorColor : undefined}
-                          bold={isSel && !noTargets}
+                          color={isSel ? 'black' : 'white'}
+                          backgroundColor={isSel ? cursorColor : undefined}
+                          bold={isSel}
                         >
-                          {` ${isSel && !noTargets ? '▶' : ' '} ${db.dbName}`}
+                          {` ${isSel ? '▶' : ' '} ${db.dbName}`}
                         </Text>
                         <Text
-                          color={isSel && !noTargets ? 'black' : textColor}
-                          backgroundColor={isSel && !noTargets ? cursorColor : undefined}
-                          dimColor={!(isSel && !noTargets)}
+                          color={isSel ? 'black' : textColor}
+                          backgroundColor={isSel ? cursorColor : undefined}
+                          dimColor={!isSel}
                         >
                           {`  [${db.versionBranch}]`}
                         </Text>
-                        {noTargets && (
-                          <Text color="gray" dimColor>{'  (déjà à la version max)'}</Text>
-                        )}
                       </Box>
                     );
                   })}

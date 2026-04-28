@@ -7,6 +7,7 @@ import {
   getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor,
 } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import {
   listFilestoreDatabases, listUsers, hashPassword,
   setUserLogin, setUserPassword, setUserActive,
@@ -31,10 +32,13 @@ type EditPhase =
   | 'error';
 
 export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseScreenProps) {
+  const { rows } = useTerminalSize();
   const primaryColor = getPrimaryColor(config);
   const secondaryColor = getSecondaryColor(config);
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
+  // borders(2) + paddingY(4) + title(1) + gap(1) + marginTop(1) + db info(1) + gap(1) + label(1) + indicators(2) + controls(1)
+  const userListHeight = Math.max(3, rows - 15);
   const versions = config.odoo_versions ?? {};
 
   const [phase, setPhase] = useState<EditPhase>('select_db');
@@ -288,30 +292,51 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
               </>
             ) : (
               <>
-                <Text color={textColor} dimColor>Sélectionnez un utilisateur :</Text>
-                <Box flexDirection="column" gap={0}>
-                  {users.map((u, i) => {
-                    const isSel = i === userSel;
-                    return (
-                      <Box key={u.id} flexDirection="row">
-                        <Text
-                          color={isSel ? 'black' : 'white'}
-                          backgroundColor={isSel ? cursorColor : undefined}
-                          bold={isSel}
-                        >
-                          {` ${isSel ? '▶' : ' '} ${u.login}`}
-                        </Text>
-                        <Text
-                          color={isSel ? 'black' : (u.active ? 'green' : 'red')}
-                          backgroundColor={isSel ? cursorColor : undefined}
-                          dimColor={!isSel}
-                        >
-                          {`  ${u.active ? 'actif' : 'inactif'}`}
-                        </Text>
-                      </Box>
-                    );
-                  })}
-                </Box>
+                <Text color={textColor} dimColor>
+                  {`Sélectionnez un utilisateur : `}
+                  <Text dimColor>{`(${users.length})`}</Text>
+                </Text>
+                {(() => {
+                  const itemsHeight = userListHeight - 2; // reserve 1 line each for indicators
+                  const winStart = Math.min(
+                    Math.max(0, userSel - Math.floor(itemsHeight / 2)),
+                    Math.max(0, users.length - itemsHeight),
+                  );
+                  const winEnd = Math.min(users.length, winStart + itemsHeight);
+                  const visible = users.slice(winStart, winEnd);
+                  return (
+                    <Box flexDirection="column" height={userListHeight} overflow="hidden">
+                      <Text color={textColor} dimColor>
+                        {winStart > 0 ? `  ↑ ${winStart} de plus` : ''}
+                      </Text>
+                      {visible.map((u, j) => {
+                        const i = winStart + j;
+                        const isSel = i === userSel;
+                        return (
+                          <Box key={u.id} flexDirection="row">
+                            <Text
+                              color={isSel ? 'black' : 'white'}
+                              backgroundColor={isSel ? cursorColor : undefined}
+                              bold={isSel}
+                            >
+                              {` ${isSel ? '▶' : ' '} ${u.login}`}
+                            </Text>
+                            <Text
+                              color={isSel ? 'black' : (u.active ? 'green' : 'red')}
+                              backgroundColor={isSel ? cursorColor : undefined}
+                              dimColor={!isSel}
+                            >
+                              {`  ${u.active ? 'actif' : 'inactif'}`}
+                            </Text>
+                          </Box>
+                        );
+                      })}
+                      <Text color={textColor} dimColor>
+                        {winEnd < users.length ? `  ↓ ${users.length - winEnd} de plus` : ''}
+                      </Text>
+                    </Box>
+                  );
+                })()}
                 <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
               </>
             )}

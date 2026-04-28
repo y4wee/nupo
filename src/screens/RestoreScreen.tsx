@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import {
   NupoConfig, OdooVersion,
   getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor,
@@ -12,7 +13,7 @@ import { LeftPanel } from '../components/LeftPanel.js';
 import { StepsPanel } from '../components/StepsPanel.js';
 import {
   listDumps, inspectDump, listDatabases, createDatabase,
-  createTempDir, extractZip, spawnPsqlRestore, copyFilestore, removeTempDir,
+  createTempDir, extractZip, spawnPsqlRestore, copyFilestore, removeTempDir, spawnNeutralize,
 } from '../services/database.js';
 
 interface RestoreScreenProps {
@@ -23,13 +24,14 @@ interface RestoreScreenProps {
 
 type Phase = 'select_dump' | 'db_name' | 'select_version' | 'running' | 'done' | 'error';
 
-type RestoreStepId = 'create_db' | 'extract' | 'restore_sql' | 'copy_filestore' | 'cleanup';
+type RestoreStepId = 'create_db' | 'extract' | 'restore_sql' | 'copy_filestore' | 'neutralize' | 'cleanup';
 
 const STEP_DEFS: { id: RestoreStepId; label: string }[] = [
   { id: 'create_db',       label: 'Création de la base de données' },
   { id: 'extract',         label: 'Extraction du dump' },
   { id: 'restore_sql',     label: 'Restauration SQL' },
   { id: 'copy_filestore',  label: 'Copie du filestore' },
+  { id: 'neutralize',      label: 'Neutralisation de la base' },
   { id: 'cleanup',         label: 'Nettoyage dossier temporaire' },
 ];
 
@@ -39,6 +41,7 @@ function buildSteps(hasFilestore: boolean): AnyStep[] {
     .map(d => ({ id: d.id, label: d.label, status: 'pending' as StepStatus }));
 }
 
+
 function patchStep(steps: AnyStep[], id: string, patch: Partial<AnyStep>): AnyStep[] {
   return steps.map(s => s.id === id ? { ...s, ...patch } : s);
 }
@@ -47,10 +50,13 @@ const DB_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const MAX_LOG_LINES = 12;
 
 export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps) {
+  const { rows } = useTerminalSize();
   const primaryColor = getPrimaryColor(config);
   const secondaryColor = getSecondaryColor(config);
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
+  // title(1) + paddingY(4) + "Restauration..." label(1) + gaps(2) + borders(2) + StepsPanel(~8)
+  const logBoxHeight = Math.max(4, rows - 18);
 
   const versions = Object.values(config.odoo_versions ?? {});
 
@@ -235,7 +241,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     if (hasFilestore) {
       update('copy_filestore', 'running');
       const srcFilestore = join(tempDir, 'filestore');
-      const destFilestore = join(version.path, 'datas', 'filestore');
+      const destFilestore = join(version.path, 'datas', 'filestore', dbName);
       const cpResult = await copyFilestore(srcFilestore, destFilestore);
       if (!cpResult.ok) {
         update('copy_filestore', 'error', cpResult.error);
@@ -247,7 +253,19 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
       update('copy_filestore', 'success');
     }
 
-    // 5. cleanup
+    // 5. neutralize
+    update('neutralize', 'running');
+    const neutralizeResult = await spawnNeutralize(dbName, version.path);
+    if (!neutralizeResult.ok) {
+      update('neutralize', 'error', neutralizeResult.error);
+      setErrorMsg(neutralizeResult.error ?? 'Échec neutralisation');
+      await removeTempDir(tempDir);
+      setPhase('error');
+      return;
+    }
+    update('neutralize', 'success');
+
+    // 6. cleanup
     update('cleanup', 'running');
     await removeTempDir(tempDir);
     update('cleanup', 'success');
@@ -370,13 +388,22 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
                 <Text color={primaryColor} bold>{dbName}</Text>
                 {'…'}
               </Text>
-              {logs.length > 0 && (
-                <Box flexDirection="column" gap={0} marginTop={1}>
-                  {logs.map((line, i) => (
-                    <Text key={i} color={textColor} dimColor>{line}</Text>
-                  ))}
-                </Box>
-              )}
+              <Box
+                flexDirection="column"
+                borderStyle="round"
+                borderColor="gray"
+                paddingX={1}
+                height={logBoxHeight}
+                overflow="hidden"
+              >
+                {logs.length === 0 ? (
+                  <Text color={textColor} dimColor>En attente…</Text>
+                ) : (
+                  logs.map((line, i) => (
+                    <Text key={i} color={textColor} dimColor wrap="truncate-end">{line}</Text>
+                  ))
+                )}
+              </Box>
             </Box>
           )}
 

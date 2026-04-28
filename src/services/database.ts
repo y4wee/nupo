@@ -359,6 +359,29 @@ export function spawnMigration(
   });
 }
 
+/** Neutralizes an Odoo database (disables mail, crons, payment providers, etc.) */
+export function spawnNeutralize(
+  dbName: string,
+  versionPath: string,
+): Promise<DatabaseResult> {
+  const python  = join(versionPath, '.venv', 'bin', 'python3');
+  const odooBin = join(versionPath, 'community', 'odoo-bin');
+
+  return new Promise(resolve => {
+    const proc = spawn(python, [odooBin, 'neutralize', '-d', dbName]);
+    let stderr = '';
+
+    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+    proc.on('close', code => {
+      if (code === 0) resolve({ ok: true });
+      else resolve({ ok: false, error: stderr.trim() || `neutralize exited with code ${code}` });
+    });
+
+    proc.on('error', err => resolve({ ok: false, error: err.message }));
+  });
+}
+
 /** Updates res.users.active for a given user id */
 export async function setUserActive(dbName: string, userId: number, active: boolean): Promise<DatabaseResult> {
   try {

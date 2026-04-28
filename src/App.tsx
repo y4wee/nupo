@@ -182,7 +182,7 @@ export function App({ onExit, onUpdate, startupArgs }: AppProps) {
   }
 
   return (
-    <Box borderStyle="round" borderColor={primaryColor} flexDirection="column" width={termWidth} height={serviceRunning ? rows : undefined}>
+    <Box borderStyle="round" borderColor={primaryColor} flexDirection="column" width={termWidth} height={rows} overflow="hidden">
       <Header activeService={activeService} serviceRunning={serviceRunning} primaryColor={primaryColor} secondaryColor={secondaryColor} />
 
       {updateBanner && (
