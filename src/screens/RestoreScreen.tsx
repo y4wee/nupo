@@ -82,9 +82,10 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
   const logsRef = useRef<string[]>(logs);
   logsRef.current = logs;
 
-  // Load dumps on mount
+  // Ensure global dumps dir exists and load dumps on mount
   useEffect(() => {
-    void listDumps(config.odoo_path_repo).then(list => {
+    const dumpsDir = join(config.odoo_path_repo, 'dumps');
+    void mkdir(dumpsDir, { recursive: true }).then(() => listDumps(config.odoo_path_repo)).then(list => {
       setDumps(list);
     });
   }, [config.odoo_path_repo]);

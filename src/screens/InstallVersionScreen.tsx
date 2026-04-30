@@ -34,7 +34,7 @@ const STEP_DEFS: { id: InstallStepId; label: string }[] = [
   { id: 'clone_enterprise',     label: 'Téléchargement Odoo enterprise' },
   { id: 'create_venv',          label: 'Création de l\'environnement virtuel Python' },
   { id: 'install_requirements', label: 'Installation des dépendances Python' },
-  { id: 'create_extras',        label: 'Création dossiers custom, config, dumps et filestore' },
+  { id: 'create_extras',        label: 'Création dossiers custom, config et filestore' },
 ];
 
 type StepAction =
@@ -406,7 +406,6 @@ export function InstallVersionScreen({
     try {
       await mkdir(join(base, 'custom'),              { recursive: true });
       await mkdir(join(base, 'config'),              { recursive: true });
-      await mkdir(join(base, 'dumps'),               { recursive: true });
       await mkdir(join(base, 'datas', 'filestore'),  { recursive: true });
       const current = await readConfig();
       // Remove from pending_installs and add to odoo_versions atomically
@@ -623,7 +622,6 @@ export function InstallVersionScreen({
                 <Text color={textColor} dimColor>{`  .venv/      → ${join(versionPath, '.venv')}`}</Text>
                 <Text color={textColor} dimColor>{`  custom/`}</Text>
                 <Text color={textColor} dimColor>{`  config/`}</Text>
-                <Text color={textColor} dimColor>{`  dumps/`}</Text>
                 <Text color={textColor} dimColor>{`  datas/`}</Text>
                 <Text color={textColor} dimColor>{`    filestore/`}</Text>
               </Box>
