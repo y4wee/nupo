@@ -56,7 +56,7 @@ function injectHttpPort(conf: string, branch: string): string {
 }
 
 function injectDataDir(conf: string, versionPath: string): string {
-  const line = `data_dir = ${versionPath}`;
+  const line = `data_dir = ${join(versionPath, 'datas')}`;
   const lines = conf.split('\n');
   const idx = lines.findIndex(l => l.trimStart().startsWith('data_dir'));
   if (idx >= 0) lines[idx] = line;
