@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { readdir, stat, mkdir, writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
-import { NupoConfig, OdooVersion, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
+import { NupoConfig, OdooVersion, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, sortedOdooVersions } from '../types/index.js';
 import { readConfig, writeConfig, readBaseConf } from '../services/config.js';
 import { openInEditor } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -78,7 +78,7 @@ export function ConfigureServiceScreen({
   onBack,
 }: ConfigureServiceScreenProps) {
   const isEditing = !!initialService;
-  const versions = Object.values(config.odoo_versions);
+  const versions = sortedOdooVersions(Object.values(config.odoo_versions));
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
 

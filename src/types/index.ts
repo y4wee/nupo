@@ -1,12 +1,14 @@
 export interface OdooVersion {
   branch: string;
   path: string;
+  pythonVersion?: string;
 }
 
 export interface PendingInstall {
   branch: string;
   path: string;
   lastCompletedStep: InstallStepId | null;
+  pythonBin?: string;
 }
 
 export interface OdooServiceConfig {
@@ -50,6 +52,14 @@ export const DEFAULT_CONFIG: NupoConfig = {
   text_color: '#848484',
   cursor_color: 'cyan',
 };
+
+export function sortedOdooVersions(versions: OdooVersion[]): OdooVersion[] {
+  return [...versions].sort((a, b) => {
+    const [aMaj = 0, aMin = 0] = a.branch.split('.').map(Number);
+    const [bMaj = 0, bMin = 0] = b.branch.split('.').map(Number);
+    return bMaj !== aMaj ? bMaj - aMaj : bMin - aMin;
+  });
+}
 
 export function getPrimaryColor(config?: NupoConfig | null): string {
   return config?.primary_color ?? '#9F0C58';
@@ -100,6 +110,7 @@ export type InstallStepId =
   | 'branch_input'
   | 'check_community'
   | 'check_enterprise'
+  | 'check_python_version'
   | 'create_dir'
   | 'clone_community'
   | 'clone_enterprise'

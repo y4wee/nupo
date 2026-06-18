@@ -3,17 +3,19 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { cpus } from 'node:os';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import {
   NupoConfig, OdooVersion,
   getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor,
-  AnyStep, StepStatus,
+  AnyStep, StepStatus, sortedOdooVersions,
 } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { StepsPanel } from '../components/StepsPanel.js';
 import {
   listDumps, inspectDump, listDatabases, createDatabase,
-  createTempDir, extractZip, spawnPsqlRestore, copyFilestore, removeTempDir, spawnNeutralize,
+  createTempDir, extractZip, spawnPsqlRestore, spawnPgRestore,
+  copyFilestore, removeTempDir, spawnNeutralize,
 } from '../services/database.js';
 
 interface RestoreScreenProps {
@@ -22,7 +24,7 @@ interface RestoreScreenProps {
   onBack: () => void;
 }
 
-type Phase = 'select_dump' | 'db_name' | 'select_version' | 'running' | 'done' | 'error';
+type Phase = 'select_dump' | 'db_name' | 'select_jobs' | 'select_version' | 'running' | 'done' | 'error';
 
 type RestoreStepId = 'create_db' | 'extract' | 'restore_sql' | 'copy_filestore' | 'neutralize' | 'cleanup';
 
@@ -35,12 +37,17 @@ const STEP_DEFS: { id: RestoreStepId; label: string }[] = [
   { id: 'cleanup',         label: 'Nettoyage dossier temporaire' },
 ];
 
-function buildSteps(hasFilestore: boolean): AnyStep[] {
+type RestoreMode = 'zip' | 'dump' | 'sql';
+
+function buildSteps(hasFilestore: boolean, mode: RestoreMode): AnyStep[] {
   return STEP_DEFS
-    .filter(d => d.id !== 'copy_filestore' || hasFilestore)
+    .filter(d => {
+      if (mode === 'dump' || mode === 'sql') return d.id === 'create_db' || d.id === 'restore_sql';
+      if (d.id === 'copy_filestore') return hasFilestore;
+      return true;
+    })
     .map(d => ({ id: d.id, label: d.label, status: 'pending' as StepStatus }));
 }
-
 
 function patchStep(steps: AnyStep[], id: string, patch: Partial<AnyStep>): AnyStep[] {
   return steps.map(s => s.id === id ? { ...s, ...patch } : s);
@@ -55,34 +62,38 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
   const secondaryColor = getSecondaryColor(config);
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
-  // title(1) + paddingY(4) + "Restauration..." label(1) + gaps(2) + borders(2) + StepsPanel(~8)
   const logBoxHeight = Math.max(4, rows - 18);
 
-  const versions = Object.values(config.odoo_versions ?? {});
+  const versions = sortedOdooVersions(Object.values(config.odoo_versions ?? {}));
+  const maxJobs = cpus().length;
 
   const [phase, setPhase] = useState<Phase>('select_dump');
   const [dumps, setDumps] = useState<string[]>([]);
   const [dumpSelected, setDumpSelected] = useState(0);
   const [selectedDump, setSelectedDump] = useState('');
+  const [restoreMode, setRestoreMode] = useState<RestoreMode>('zip');
   const [hasFilestore, setHasFilestore] = useState(false);
 
   const [dbInput, setDbInput] = useState('');
   const [dbError, setDbError] = useState<string | null>(null);
   const [dbName, setDbName] = useState('');
+  const dbNameRef = useRef('');
+
+  const [jobCount, setJobCount] = useState(1);
+  const jobCountRef = useRef(1);
 
   const [versionSelected, setVersionSelected] = useState(0);
 
-  const [steps, setSteps] = useState<AnyStep[]>(buildSteps(false));
+  const [steps, setSteps] = useState<AnyStep[]>(buildSteps(false, 'zip'));
   const [logs, setLogs] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Refs for async use
   const stepsRef = useRef<AnyStep[]>(steps);
   stepsRef.current = steps;
-  const logsRef = useRef<string[]>(logs);
-  logsRef.current = logs;
+  const restoreModeRef = useRef<RestoreMode>('zip');
+  const selectedDumpRef = useRef('');
+  const hasFilestoreRef = useRef(false);
 
-  // Ensure global dumps dir exists and load dumps on mount
   useEffect(() => {
     const dumpsDir = join(config.odoo_path_repo, 'dumps');
     void mkdir(dumpsDir, { recursive: true }).then(() => listDumps(config.odoo_path_repo)).then(list => {
@@ -97,8 +108,25 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     });
   }, []);
 
-  const updateStep = useCallback((id: string, status: StepStatus, errorMessage?: string) => {
-    setSteps(prev => patchStep(prev, id, { status, errorMessage }));
+  const resetState = useCallback(() => {
+    setPhase('select_dump');
+    setDumpSelected(0);
+    setSelectedDump('');
+    setRestoreMode('zip');
+    setHasFilestore(false);
+    setDbInput('');
+    setDbError(null);
+    setDbName('');
+    setJobCount(1);
+    jobCountRef.current = 1;
+    setVersionSelected(0);
+    setSteps(buildSteps(false, 'zip'));
+    setLogs([]);
+    setErrorMsg(null);
+    restoreModeRef.current = 'zip';
+    selectedDumpRef.current = '';
+    hasFilestoreRef.current = false;
+    dbNameRef.current = '';
   }, []);
 
   // ── Phase: select_dump ──────────────────────────────────────────────────────
@@ -112,18 +140,37 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
       if (key.return) {
         const dump = dumps[dumpSelected];
         if (!dump) return;
-        const zipPath = join(config.odoo_path_repo, 'dumps', dump);
-        void inspectDump(zipPath).then(info => {
-          setSelectedDump(dump);
-          setHasFilestore(info.hasFilestore);
+        const filePath = join(config.odoo_path_repo, 'dumps', dump);
+        const lc = dump.toLowerCase();
+        const mode: RestoreMode = lc.endsWith('.dump') ? 'dump' : lc.endsWith('.sql') ? 'sql' : 'zip';
+        setSelectedDump(dump);
+        selectedDumpRef.current = dump;
+        setRestoreMode(mode);
+        restoreModeRef.current = mode;
+        if (mode !== 'zip') {
+          setHasFilestore(false);
+          hasFilestoreRef.current = false;
           setPhase('db_name');
-        });
+        } else {
+          void inspectDump(filePath).then(info => {
+            setHasFilestore(info.hasFilestore);
+            hasFilestoreRef.current = info.hasFilestore;
+            setPhase('db_name');
+          });
+        }
       }
     },
     { isActive: phase === 'select_dump' },
   );
 
   // ── Phase: db_name ─────────────────────────────────────────────────────────
+
+  useInput(
+    (_char, key) => {
+      if (key.escape) { setPhase('select_dump'); return; }
+    },
+    { isActive: phase === 'db_name' },
+  );
 
   const handleDbSubmit = useCallback(async (value: string) => {
     const name = value.trim();
@@ -139,17 +186,45 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
       return;
     }
     setDbName(name);
-    setPhase('select_version');
-  }, []);
+    dbNameRef.current = name;
+    if (restoreModeRef.current === 'dump') {
+      setJobCount(1);
+      jobCountRef.current = 1;
+      setPhase('select_jobs');
+    } else if (restoreModeRef.current === 'sql') {
+      void runRestoreDump(name);
+    } else {
+      setPhase('select_version');
+    }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Phase: select_jobs (.dump only) ───────────────────────────────────────
 
   useInput(
     (_char, key) => {
-      if (key.escape) { setPhase('select_dump'); return; }
+      if (key.escape) { setPhase('db_name'); return; }
+      if (key.leftArrow || key.downArrow) {
+        setJobCount(p => {
+          const v = Math.max(1, p - 1);
+          jobCountRef.current = v;
+          return v;
+        });
+      }
+      if (key.rightArrow || key.upArrow) {
+        setJobCount(p => {
+          const v = Math.min(maxJobs, p + 1);
+          jobCountRef.current = v;
+          return v;
+        });
+      }
+      if (key.return) {
+        void runRestoreDump(dbNameRef.current);
+      }
     },
-    { isActive: phase === 'db_name' },
+    { isActive: phase === 'select_jobs' },
   );
 
-  // ── Phase: select_version ──────────────────────────────────────────────────
+  // ── Phase: select_version (zip only) ───────────────────────────────────────
 
   useInput(
     (_char, key) => {
@@ -157,7 +232,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
       if (key.upArrow) setVersionSelected(p => Math.max(0, p - 1));
       if (key.downArrow) setVersionSelected(p => Math.min(versions.length - 1, p + 1));
       if (key.return && versions[versionSelected]) {
-        void runRestore(versions[versionSelected]!);
+        void runRestoreZip(versions[versionSelected]!);
       }
     },
     { isActive: phase === 'select_version' },
@@ -167,43 +242,75 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
 
   useInput(
     (_char, key) => {
-      if (key.escape || key.return) {
-        // Reset to initial state
-        setPhase('select_dump');
-        setDumpSelected(0);
-        setSelectedDump('');
-        setHasFilestore(false);
-        setDbInput('');
-        setDbError(null);
-        setDbName('');
-        setVersionSelected(0);
-        setSteps(buildSteps(false));
-        setLogs([]);
-        setErrorMsg(null);
-      }
+      if (key.escape || key.return) resetState();
     },
     { isActive: phase === 'done' || phase === 'error' },
   );
 
-  // ── Restore runner ─────────────────────────────────────────────────────────
+  // ── Restore .dump (pg_restore, no filestore, no neutralize) ────────────────
 
-  const runRestore = useCallback(async (version: OdooVersion) => {
-    const zipPath = join(config.odoo_path_repo, 'dumps', selectedDump);
-    const tempDir = createTempDir();
-    const currentSteps = buildSteps(hasFilestore);
+  const runRestoreDump = useCallback(async (name: string) => {
+    const dump = selectedDumpRef.current;
+    const mode = restoreModeRef.current;
+    const dumpPath = join(config.odoo_path_repo, 'dumps', dump);
+    const currentSteps = buildSteps(false, mode);
     setSteps(currentSteps);
     setLogs([]);
     setErrorMsg(null);
     setPhase('running');
 
-    // Helper: update steps state from outside react cycle
     const update = (id: string, status: StepStatus, errorMessage?: string) => {
       setSteps(prev => patchStep(prev, id, { status, errorMessage }));
     };
 
     // 1. create_db
     update('create_db', 'running');
-    const dbResult = await createDatabase(dbName);
+    const dbResult = await createDatabase(name);
+    if (!dbResult.ok) {
+      update('create_db', 'error', dbResult.error);
+      setErrorMsg(dbResult.error ?? 'Échec création base');
+      setPhase('error');
+      return;
+    }
+    update('create_db', 'success');
+
+    // 2. restore_sql — psql pour .sql, pg_restore pour .dump
+    update('restore_sql', 'running');
+    const restoreResult = mode === 'sql'
+      ? await spawnPsqlRestore(name, dumpPath, addLog)
+      : await spawnPgRestore(name, dumpPath, addLog, jobCountRef.current);
+    if (!restoreResult.ok) {
+      update('restore_sql', 'error', restoreResult.error);
+      setErrorMsg(restoreResult.error ?? 'Échec restauration');
+      setPhase('error');
+      return;
+    }
+    update('restore_sql', 'success');
+
+    setPhase('done');
+  }, [config.odoo_path_repo, addLog]);
+
+  // ── Restore .zip (extract → psql → filestore → neutralize → cleanup) ───────
+
+  const runRestoreZip = useCallback(async (version: OdooVersion) => {
+    const dump = selectedDumpRef.current;
+    const zipPath = join(config.odoo_path_repo, 'dumps', dump);
+    const name = dbNameRef.current;
+    const fsFlag = hasFilestoreRef.current;
+    const tempDir = createTempDir();
+    const currentSteps = buildSteps(fsFlag, 'zip');
+    setSteps(currentSteps);
+    setLogs([]);
+    setErrorMsg(null);
+    setPhase('running');
+
+    const update = (id: string, status: StepStatus, errorMessage?: string) => {
+      setSteps(prev => patchStep(prev, id, { status, errorMessage }));
+    };
+
+    // 1. create_db
+    update('create_db', 'running');
+    const dbResult = await createDatabase(name);
     if (!dbResult.ok) {
       update('create_db', 'error', dbResult.error);
       setErrorMsg(dbResult.error ?? 'Échec création base');
@@ -228,7 +335,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     // 3. restore_sql
     update('restore_sql', 'running');
     const dumpSqlPath = join(tempDir, 'dump.sql');
-    const psqlResult = await spawnPsqlRestore(dbName, dumpSqlPath, addLog);
+    const psqlResult = await spawnPsqlRestore(name, dumpSqlPath, addLog);
     if (!psqlResult.ok) {
       update('restore_sql', 'error', psqlResult.error);
       setErrorMsg(psqlResult.error ?? 'Échec restauration SQL');
@@ -239,10 +346,10 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     update('restore_sql', 'success');
 
     // 4. copy_filestore (conditional)
-    if (hasFilestore) {
+    if (fsFlag) {
       update('copy_filestore', 'running');
       const srcFilestore = join(tempDir, 'filestore');
-      const destFilestore = join(version.path, 'datas', 'filestore', dbName);
+      const destFilestore = join(version.path, 'datas', 'filestore', name);
       const cpResult = await copyFilestore(srcFilestore, destFilestore);
       if (!cpResult.ok) {
         update('copy_filestore', 'error', cpResult.error);
@@ -256,7 +363,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
 
     // 5. neutralize
     update('neutralize', 'running');
-    const neutralizeResult = await spawnNeutralize(dbName, version.path);
+    const neutralizeResult = await spawnNeutralize(name, version.path);
     if (!neutralizeResult.ok) {
       update('neutralize', 'error', neutralizeResult.error);
       setErrorMsg(neutralizeResult.error ?? 'Échec neutralisation');
@@ -272,7 +379,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     update('cleanup', 'success');
 
     setPhase('done');
-  }, [config.odoo_path_repo, selectedDump, hasFilestore, dbName, addLog]);
+  }, [config.odoo_path_repo, addLog]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -289,9 +396,9 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
             <Box flexDirection="column" gap={1} marginTop={1}>
               {dumps.length === 0 ? (
                 <>
-                  <Text color="yellow">Aucun fichier .zip trouvé dans dumps/.</Text>
+                  <Text color="yellow">Aucun fichier .zip, .dump ou .sql trouvé dans dumps/.</Text>
                   <Text color={textColor} dimColor>
-                    {`Placez un fichier .zip dans : ${join(config.odoo_path_repo, 'dumps')}`}
+                    {`Placez un fichier dans : ${join(config.odoo_path_repo, 'dumps')}`}
                   </Text>
                   <Text color={textColor} dimColor>Échap retour</Text>
                 </>
@@ -325,7 +432,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
               <Text color={textColor} dimColor>
                 {'Dump : '}
                 <Text color="white">{selectedDump}</Text>
-                {hasFilestore ? '  (filestore inclus)' : ''}
+                {restoreMode === 'zip' && hasFilestore ? '  (filestore inclus)' : ''}
               </Text>
               <Text color="white">Nom de la base de données à créer :</Text>
               <Box>
@@ -342,7 +449,28 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
             </Box>
           )}
 
-          {/* Phase: select_version */}
+          {/* Phase: select_jobs (.dump only) */}
+          {phase === 'select_jobs' && (
+            <Box flexDirection="column" gap={1} marginTop={1}>
+              <Text color={textColor} dimColor>
+                {'Dump : '}
+                <Text color="white">{selectedDump}</Text>
+              </Text>
+              <Text color="white">Nombre de workers pour la restauration :</Text>
+              <Box flexDirection="row" gap={2} alignItems="center">
+                <Text color={textColor} dimColor>{'◀ '}</Text>
+                <Text color={primaryColor} bold>{` ${jobCount} `}</Text>
+                <Text color={textColor} dimColor>{' ▶'}</Text>
+                <Text color={textColor} dimColor>{`  (max : ${maxJobs} cœurs)`}</Text>
+              </Box>
+              {jobCount === maxJobs && (
+                <Text color="yellow" dimColor>{'  ⚠ tous les cœurs utilisés — peut ralentir le système'}</Text>
+              )}
+              <Text color={textColor} dimColor>{'◀▶ ajuster  ·  ↵ lancer  ·  Échap retour'}</Text>
+            </Box>
+          )}
+
+          {/* Phase: select_version (zip only) */}
           {phase === 'select_version' && (
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color={textColor} dimColor>
@@ -356,7 +484,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
                 </>
               ) : (
                 <>
-                  <Text color={textColor} dimColor>Sélectionnez la version Odoo (pour le filestore) :</Text>
+                  <Text color={textColor} dimColor>Sélectionnez la version Odoo (pour le filestore et la neutralisation) :</Text>
                   <Box flexDirection="column" gap={0}>
                     {versions.map((v, i) => {
                       const isSel = i === versionSelected;
@@ -386,7 +514,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color={textColor}>
                 {'Restauration de '}
-                <Text color={primaryColor} bold>{dbName}</Text>
+                <Text color={primaryColor} bold>{dbName || dbNameRef.current}</Text>
                 {'…'}
               </Text>
               <Box
@@ -413,7 +541,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color="green">
                 {'✓ Base '}
-                <Text bold>{dbName}</Text>
+                <Text bold>{dbName || dbNameRef.current}</Text>
                 {' restaurée avec succès.'}
               </Text>
               <Text color={textColor} dimColor>↵/Échap pour réinitialiser</Text>
@@ -425,7 +553,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color="red">
                 {'✗ Erreur lors de la restauration de '}
-                <Text bold>{dbName}</Text>
+                <Text bold>{dbName || dbNameRef.current}</Text>
                 {'.'}
               </Text>
               {errorMsg && (

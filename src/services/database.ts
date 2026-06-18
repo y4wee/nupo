@@ -30,12 +30,15 @@ function execFileAsync(cmd: string, args: string[]): Promise<{ stdout: string; s
   });
 }
 
-/** Lists .zip files in repoPath/dumps/ */
+/** Lists .zip and .dump files in repoPath/dumps/ */
 export async function listDumps(repoPath: string): Promise<string[]> {
   const dumpsDir = join(repoPath, 'dumps');
   try {
     const entries = await readdir(dumpsDir);
-    return entries.filter(e => e.toLowerCase().endsWith('.zip'));
+    return entries.filter(e => {
+      const lc = e.toLowerCase();
+      return lc.endsWith('.zip') || lc.endsWith('.dump') || lc.endsWith('.sql');
+    });
   } catch {
     return [];
   }
@@ -58,6 +61,7 @@ export async function listDatabases(): Promise<string[]> {
   try {
     const { stdout } = await execFileAsync('psql', [
       '--no-password',
+      '--dbname', 'postgres',
       '--tuples-only',
       '--command', 'SELECT datname FROM pg_database WHERE datistemplate = false',
     ]);
@@ -168,6 +172,51 @@ export function spawnPsqlRestore(
     proc.on('error', err => {
       resolve({ ok: false, error: err.message });
     });
+  });
+}
+
+/** Restores a PostgreSQL custom-format dump (.dump) via pg_restore, streaming output */
+export function spawnPgRestore(
+  dbName: string,
+  dumpPath: string,
+  onLine: (line: string) => void,
+  jobs = 1,
+): Promise<DatabaseResult> {
+  return new Promise(resolve => {
+    const args = [
+      '--no-password',
+      '--dbname', dbName,
+      '--no-owner',
+      '--no-privileges',
+    ];
+    if (jobs > 1) args.push('-j', String(jobs));
+    args.push(dumpPath);
+    const proc = spawn('pg_restore', args);
+    let stderr = '';
+
+    proc.stdout.on('data', (chunk: Buffer) => {
+      for (const l of chunk.toString().split('\n')) {
+        const t = l.trim();
+        if (t) onLine(t);
+      }
+    });
+
+    proc.stderr.on('data', (chunk: Buffer) => {
+      for (const l of chunk.toString().split('\n')) {
+        const t = l.trim();
+        if (t) { stderr += t + '\n'; onLine(t); }
+      }
+    });
+
+    proc.on('close', code => {
+      if (code === 0) {
+        resolve({ ok: true });
+      } else {
+        resolve({ ok: false, error: stderr.trim() || `pg_restore exited with code ${code}` });
+      }
+    });
+
+    proc.on('error', err => resolve({ ok: false, error: err.message }));
   });
 }
 
@@ -329,7 +378,7 @@ export function spawnMigration(
   enterpriseCode: string | undefined,
   onLine: (line: string) => void,
 ): Promise<DatabaseResult> {
-  const base = `python <(curl -s https://upgrade.odoo.com/upgrade) ${type} -d ${dbName} -t ${targetVersion}`;
+  const base = `python3 <(curl -s https://upgrade.odoo.com/upgrade) ${type} -d ${dbName} -t ${targetVersion}`;
   const cmd = type === 'production' && enterpriseCode ? `${base} -c ${enterpriseCode}` : base;
 
   return new Promise(resolve => {

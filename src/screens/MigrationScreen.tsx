@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
-import { listFilestoreDatabases, spawnMigration, FilestoreEntry } from '../services/database.js';
+import { listDatabases, spawnMigration } from '../services/database.js';
 
 interface MigrationScreenProps {
   config: NupoConfig;
@@ -13,6 +13,7 @@ interface MigrationScreenProps {
 
 type MigrationPhase =
   | 'select_db'
+  | 'select_source_version'
   | 'select_version'
   | 'select_type'
   | 'enter_code'
@@ -21,7 +22,8 @@ type MigrationPhase =
   | 'done'
   | 'error';
 
-const ALL_VERSIONS = ['14.0', '15.0', '16.0', '17.0', '18.0', '19.0'];
+const SYSTEM_DBS = new Set(['postgres', 'template0', 'template1']);
+const ALL_VERSIONS = ['13.0', '14.0', '15.0', '16.0', '17.0', '18.0', '19.0'];
 
 function targetVersions(currentBranch: string): string[] {
   return ALL_VERSIONS.filter(v => parseFloat(v) > parseFloat(currentBranch));
@@ -37,11 +39,15 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
 
   // DB list
   const [dbLoading, setDbLoading] = useState(true);
-  const [databases, setDatabases] = useState<FilestoreEntry[]>([]);
+  const [databases, setDatabases] = useState<string[]>([]);
   const [dbSel, setDbSel] = useState(0);
-  const [selectedDb, setSelectedDb] = useState<FilestoreEntry | null>(null);
+  const [selectedDbName, setSelectedDbName] = useState('');
 
-  // Version selection
+  // Source version selection
+  const [sourceSel, setSourceSel] = useState(0);
+  const [selectedSourceVersion, setSelectedSourceVersion] = useState('');
+
+  // Target version selection
   const [versions, setVersions] = useState<string[]>([]);
   const [versionSel, setVersionSel] = useState(0);
   const [selectedVersion, setSelectedVersion] = useState('');
@@ -59,10 +65,10 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
   const [migrationOk, setMigrationOk] = useState<boolean | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Load databases
+  // Load PostgreSQL databases
   useEffect(() => {
-    void listFilestoreDatabases(Object.values(config.odoo_versions ?? {})).then(list => {
-      setDatabases(list.filter(db => targetVersions(db.versionBranch).length > 0));
+    void listDatabases().then(list => {
+      setDatabases(list.filter(db => !SYSTEM_DBS.has(db)).sort());
       setDbSel(0);
       setDbLoading(false);
     });
@@ -78,19 +84,33 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     if (key.return) {
       const db = databases[dbSel];
       if (!db) return;
-      const targets = targetVersions(db.versionBranch);
-      if (targets.length === 0) return; // no upgradeable versions
-      setSelectedDb(db);
+      setSelectedDbName(db);
+      setSourceSel(0);
+      setPhase('select_source_version');
+    }
+  }, { isActive: phase === 'select_db' });
+
+  // ── select_source_version ─────────────────────────────────────────────────
+
+  useInput((_char, key) => {
+    if (key.escape) { setPhase('select_db'); return; }
+    if (key.upArrow) setSourceSel(p => Math.max(0, p - 1));
+    if (key.downArrow) setSourceSel(p => Math.min(ALL_VERSIONS.length - 1, p + 1));
+    if (key.return) {
+      const src = ALL_VERSIONS[sourceSel]!;
+      const targets = targetVersions(src);
+      if (targets.length === 0) return;
+      setSelectedSourceVersion(src);
       setVersions(targets);
       setVersionSel(0);
       setPhase('select_version');
     }
-  }, { isActive: phase === 'select_db' });
+  }, { isActive: phase === 'select_source_version' });
 
   // ── select_version ────────────────────────────────────────────────────────
 
   useInput((_char, key) => {
-    if (key.escape) { setPhase('select_db'); return; }
+    if (key.escape) { setPhase('select_source_version'); return; }
     if (key.upArrow) setVersionSel(p => Math.max(0, p - 1));
     if (key.downArrow) setVersionSel(p => Math.min(versions.length - 1, p + 1));
     if (key.return) {
@@ -152,14 +172,14 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
   // ── runner ────────────────────────────────────────────────────────────────
 
   const runMigration = useCallback(async () => {
-    if (!selectedDb) return;
+    if (!selectedDbName) return;
     setLines([]);
     setMigrationOk(null);
     setErrorMsg('');
     setPhase('running');
 
     const result = await spawnMigration(
-      selectedDb.dbName,
+      selectedDbName,
       selectedVersion,
       selectedType,
       selectedType === 'production' ? enterpriseCode.trim() : undefined,
@@ -169,11 +189,9 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     setMigrationOk(result.ok);
     setErrorMsg(result.error ?? '');
     setPhase(result.ok ? 'done' : 'error');
-  }, [selectedDb, selectedVersion, selectedType, enterpriseCode]);
+  }, [selectedDbName, selectedVersion, selectedType, enterpriseCode]);
 
   // ── render ────────────────────────────────────────────────────────────────
-
-  const currentDb = databases[dbSel];
 
   return (
     <Box flexDirection="row" flexGrow={1}>
@@ -189,7 +207,7 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
               <Text color={textColor} dimColor>Chargement…</Text>
             ) : databases.length === 0 ? (
               <>
-                <Text color="yellow">Aucune base trouvée dans les filestores.</Text>
+                <Text color="yellow">Aucune base PostgreSQL trouvée.</Text>
                 <Text color={textColor} dimColor>Échap retour</Text>
               </>
             ) : (
@@ -199,22 +217,14 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
                   {databases.map((db, i) => {
                     const isSel = i === dbSel;
                     return (
-                      <Box key={`${db.versionBranch}/${db.dbName}`} flexDirection="row">
-                        <Text
-                          color={isSel ? 'black' : 'white'}
-                          backgroundColor={isSel ? cursorColor : undefined}
-                          bold={isSel}
-                        >
-                          {` ${isSel ? '▶' : ' '} ${db.dbName}`}
-                        </Text>
-                        <Text
-                          color={isSel ? 'black' : textColor}
-                          backgroundColor={isSel ? cursorColor : undefined}
-                          dimColor={!isSel}
-                        >
-                          {`  [${db.versionBranch}]`}
-                        </Text>
-                      </Box>
+                      <Text
+                        key={db}
+                        color={isSel ? 'black' : 'white'}
+                        backgroundColor={isSel ? cursorColor : undefined}
+                        bold={isSel}
+                      >
+                        {` ${isSel ? '▶' : ' '} ${db}`}
+                      </Text>
                     );
                   })}
                 </Box>
@@ -224,13 +234,42 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
           </Box>
         )}
 
-        {/* select_version */}
-        {phase === 'select_version' && selectedDb && (
+        {/* select_source_version */}
+        {phase === 'select_source_version' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Box flexDirection="row" gap={1}>
               <Text color={textColor} dimColor>Base :</Text>
-              <Text color="white" bold>{selectedDb.dbName}</Text>
-              <Text color={textColor} dimColor>({selectedDb.versionBranch})</Text>
+              <Text color="white" bold>{selectedDbName}</Text>
+            </Box>
+            <Text color={textColor} dimColor>Version Odoo actuelle de cette base :</Text>
+            <Box flexDirection="column" gap={0}>
+              {ALL_VERSIONS.map((v, i) => {
+                const isSel = i === sourceSel;
+                const noTarget = targetVersions(v).length === 0;
+                return (
+                  <Text
+                    key={v}
+                    color={isSel ? 'black' : noTarget ? 'gray' : 'white'}
+                    backgroundColor={isSel ? cursorColor : undefined}
+                    bold={isSel}
+                    dimColor={!isSel && noTarget}
+                  >
+                    {` ${isSel ? '▶' : ' '} Odoo ${v}${noTarget ? '  (version max)' : ''}`}
+                  </Text>
+                );
+              })}
+            </Box>
+            <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
+          </Box>
+        )}
+
+        {/* select_version */}
+        {phase === 'select_version' && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Box flexDirection="row" gap={1}>
+              <Text color={textColor} dimColor>Base :</Text>
+              <Text color="white" bold>{selectedDbName}</Text>
+              <Text color={textColor} dimColor>({selectedSourceVersion})</Text>
             </Box>
             <Text color={textColor} dimColor>Sélectionnez la version cible :</Text>
             <Box flexDirection="column" gap={0}>
@@ -253,11 +292,11 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
         )}
 
         {/* select_type */}
-        {phase === 'select_type' && selectedDb && (
+        {phase === 'select_type' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Box flexDirection="row" gap={1}>
               <Text color={textColor} dimColor>Base :</Text>
-              <Text color="white" bold>{selectedDb.dbName}</Text>
+              <Text color="white" bold>{selectedDbName}</Text>
               <Text color={textColor} dimColor>→ Odoo</Text>
               <Text color={primaryColor} bold>{selectedVersion}</Text>
             </Box>
@@ -282,11 +321,11 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
         )}
 
         {/* enter_code */}
-        {phase === 'enter_code' && selectedDb && (
+        {phase === 'enter_code' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Box flexDirection="row" gap={1}>
               <Text color={textColor} dimColor>Base :</Text>
-              <Text color="white" bold>{selectedDb.dbName}</Text>
+              <Text color="white" bold>{selectedDbName}</Text>
               <Text color={textColor} dimColor>→ Odoo</Text>
               <Text color={primaryColor} bold>{selectedVersion}</Text>
               <Text color="yellow" bold>· Production</Text>
@@ -302,24 +341,24 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
         )}
 
         {/* confirm */}
-        {phase === 'confirm' && selectedDb && (
+        {phase === 'confirm' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color={secondaryColor} bold>Confirmer la migration</Text>
             <Box flexDirection="column" gap={0} marginTop={1}>
               <Box flexDirection="row" gap={1}>
-                <Text color={textColor} dimColor>Base         :</Text>
-                <Text color="white" bold>{selectedDb.dbName}</Text>
+                <Text color={textColor} dimColor>Base             :</Text>
+                <Text color="white" bold>{selectedDbName}</Text>
               </Box>
               <Box flexDirection="row" gap={1}>
                 <Text color={textColor} dimColor>Version actuelle :</Text>
-                <Text color="white">{selectedDb.versionBranch}</Text>
+                <Text color="white">{selectedSourceVersion}</Text>
               </Box>
               <Box flexDirection="row" gap={1}>
                 <Text color={textColor} dimColor>Version cible    :</Text>
                 <Text color={primaryColor} bold>{selectedVersion}</Text>
               </Box>
               <Box flexDirection="row" gap={1}>
-                <Text color={textColor} dimColor>Type         :</Text>
+                <Text color={textColor} dimColor>Type             :</Text>
                 <Text color={selectedType === 'production' ? 'yellow' : 'cyan'} bold>
                   {selectedType === 'test' ? 'Test' : 'Production'}
                 </Text>
@@ -336,11 +375,11 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
         )}
 
         {/* running */}
-        {phase === 'running' && selectedDb && (
+        {phase === 'running' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color={textColor}>
               {'Migration de '}
-              <Text color={primaryColor} bold>{selectedDb.dbName}</Text>
+              <Text color={primaryColor} bold>{selectedDbName}</Text>
               {' → Odoo '}
               <Text color={primaryColor} bold>{selectedVersion}</Text>
               {'…'}
@@ -355,11 +394,11 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
         )}
 
         {/* done */}
-        {phase === 'done' && selectedDb && (
+        {phase === 'done' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="green" bold>
               {'✓ Migration de '}
-              <Text bold>{selectedDb.dbName}</Text>
+              <Text bold>{selectedDbName}</Text>
               {` vers Odoo ${selectedVersion} terminée avec succès.`}
             </Text>
             <Text color={textColor} dimColor>↵/Échap retour</Text>
@@ -367,7 +406,7 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
         )}
 
         {/* error */}
-        {phase === 'error' && selectedDb && (
+        {phase === 'error' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
             <Text color="red" bold>✗ La migration a échoué.</Text>
             {errorMsg ? (

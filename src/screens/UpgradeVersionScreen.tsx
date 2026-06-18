@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useReducer } from 'rea
 import { Box, Text, useInput } from 'ink';
 import { stat } from 'fs/promises';
 import { join } from 'path';
-import { NupoConfig, OdooVersion, UpgradeStep, StepStatus, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
+import { NupoConfig, OdooVersion, UpgradeStep, StepStatus, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, sortedOdooVersions } from '../types/index.js';
 import {
   GitProgress,
   getLocalCommit, getRemoteCommit, updateRepo,
@@ -42,7 +42,7 @@ async function dirExists(p: string): Promise<boolean> {
 }
 
 export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersionScreenProps) {
-  const versions = Object.values(config.odoo_versions);
+  const versions = sortedOdooVersions(Object.values(config.odoo_versions));
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
 

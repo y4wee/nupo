@@ -26,6 +26,16 @@ export function runInTerminal(cmd: string, args: string[]): void {
   withRawModeDisabled(() => spawnSync(cmd, args, { stdio: 'inherit' }));
 }
 
+/** Extracts the first copiable shell command (sudo apt… or sudo …) from an error message. */
+export function extractCopyableCommand(msg: string): string | null {
+  const lines = msg.split('\n').map(l => l.trim()).filter(Boolean);
+  return (
+    lines.find(l => l.startsWith('sudo apt')) ??
+    lines.find(l => l.startsWith('sudo')) ??
+    null
+  );
+}
+
 export type ClipboardResult = 'ok' | 'failed';
 
 export function copyToClipboard(text: string): ClipboardResult {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, OdooVersion, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, StepStatus } from '../types/index.js';
+import { NupoConfig, OdooVersion, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, StepStatus, sortedOdooVersions } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { setupVsCode, IdeStepId } from '../services/ide.js';
 
@@ -42,7 +42,7 @@ const STATUS_COLORS: Record<StepStatus, string> = {
 };
 
 export function IdeScreen({ config, leftWidth, onBack }: IdeScreenProps) {
-  const versions = Object.values(config.odoo_versions ?? {});
+  const versions = sortedOdooVersions(Object.values(config.odoo_versions ?? {}));
 
   const [view,     setView]     = useState<IdeView>('select');
   const [selected, setSelected] = useState(0);

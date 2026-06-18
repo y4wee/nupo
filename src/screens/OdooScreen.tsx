@@ -6,6 +6,7 @@ import { InstallVersionScreen } from './InstallVersionScreen.js';
 import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
 import { OdooServiceScreen } from './OdooServiceScreen.js';
 import { StartServiceScreen } from './StartServiceScreen.js';
+import { PipInstallScreen } from './PipInstallScreen.js';
 
 interface OdooScreenProps {
   leftWidth: number;
@@ -38,9 +39,14 @@ const ODOO_OPTIONS = [
     label: 'Démarrer Service Odoo',
     description: "Lancer un service Odoo configuré avec des arguments supplémentaires optionnels.",
   },
+  {
+    id: 'pip' as const,
+    label: 'Gérer les librairies Python',
+    description: "Installer ou désinstaller des packages pip sur une version Odoo : scan global des manifests ou opération manuelle.",
+  },
 ];
 
-type OdooSubScreen = 'install' | 'upgrade' | 'service' | 'start';
+type OdooSubScreen = 'install' | 'upgrade' | 'service' | 'start' | 'pip';
 
 export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServiceRunning, onServiceStopped, autoStart }: OdooScreenProps) {
   const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
@@ -104,6 +110,16 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
         onServiceRunning={onServiceRunning}
         onServiceStopped={onServiceStopped}
         autoStart={autoStart}
+      />
+    );
+  }
+
+  if (subScreen === 'pip') {
+    return (
+      <PipInstallScreen
+        config={config}
+        leftWidth={leftWidth}
+        onBack={() => setSubScreen(null)}
       />
     );
   }

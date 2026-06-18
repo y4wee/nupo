@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
+import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, sortedOdooVersions } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import {
   listFilestoreDatabases, dropDatabase, removeFilestoreEntry,
@@ -21,7 +21,7 @@ export function DropScreen({ config, leftWidth, onBack }: DropScreenProps) {
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
 
-  const versions = Object.values(config.odoo_versions ?? {});
+  const versions = sortedOdooVersions(Object.values(config.odoo_versions ?? {}));
 
   const [phase, setPhase] = useState<DropPhase>('select');
   const [loading, setLoading] = useState(true);

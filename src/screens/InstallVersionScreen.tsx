@@ -4,15 +4,17 @@ import TextInput from 'ink-text-input';
 import { mkdir, stat } from 'fs/promises';
 import { join } from 'path';
 import {
-  InstallStep, InstallStepId, StepStatus, NupoConfig, PendingInstall, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor,
+  InstallStep, InstallStepId, StepStatus, NupoConfig, PendingInstall, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, sortedOdooVersions,
 } from '../types/index.js';
 import {
   GitProgress,
   checkBranch, cloneRepo,
   ODOO_COMMUNITY_URL, ODOO_ENTERPRISE_URL,
 } from '../services/git.js';
-import { createVenv, installRequirements } from '../services/python.js';
+import { createVenv, installRequirements, findPythonBinary, getPythonVersion } from '../services/python.js';
 import { readConfig, writeConfig } from '../services/config.js';
+import { getOdooPythonReq } from '../constants/pythonCompatibility.js';
+import { copyToClipboard, extractCopyableCommand } from '../services/system.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { StepsPanel } from '../components/StepsPanel.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
@@ -29,6 +31,7 @@ const STEP_DEFS: { id: InstallStepId; label: string }[] = [
   { id: 'branch_input',         label: 'Saisie de la version' },
   { id: 'check_community',      label: 'Vérification branche community' },
   { id: 'check_enterprise',     label: 'Vérification branche enterprise' },
+  { id: 'check_python_version', label: 'Vérification version Python' },
   { id: 'create_dir',           label: 'Création du dossier' },
   { id: 'clone_community',      label: 'Téléchargement Odoo community' },
   { id: 'clone_enterprise',     label: 'Téléchargement Odoo enterprise' },
@@ -92,10 +95,19 @@ export function InstallVersionScreen({
   const [done, setDone] = useState(false);
   const [hasEnterprise, setHasEnterprise] = useState(false);
   const hasEnterpriseRef = useRef(false);
+  // Python version check state
+  const [pythonWarning, setPythonWarning] = useState<{
+    recommended: string;
+    current: string;
+    currentBin: string;
+  } | null>(null);
+  const [pythonWarningAction, setPythonWarningAction] = useState<0 | 1>(0); // 0 = continuer, 1 = annuler
+  const pythonBinRef = useRef<string | undefined>(undefined);
   const [cloneProgress, setCloneProgress] = useState<GitProgress | null>(null);
   const [pipOutput, setPipOutput] = useState<string>('');
   const [retryCount, setRetryCount] = useState(0);
   const [errorAction, setErrorAction] = useState<0 | 1>(0); // 0 = Relancer, 1 = Retour
+  const [copied, setCopied] = useState(false);
   const [focus, setFocus] = useState<'input' | 'pending' | 'installed'>('input');
   const [pendingSelected,   setPendingSelected]   = useState(0);
   const [installedSelected, setInstalledSelected] = useState(0);
@@ -109,7 +121,7 @@ export function InstallVersionScreen({
   const versionPathRef = useRef('');
 
   const pendingInstalls    = Object.values(config.pending_installs ?? {});
-  const installedVersions  = Object.values(config.odoo_versions ?? {});
+  const installedVersions  = sortedOdooVersions(Object.values(config.odoo_versions ?? {}));
 
   // ── Handlers defined before useInput ──────────────────────────────────────
 
@@ -132,6 +144,7 @@ export function InstallVersionScreen({
   const handleResume = (pending: PendingInstall) => {
     branchNameRef.current = pending.branch;
     versionPathRef.current = pending.path;
+    pythonBinRef.current = pending.pythonBin;
     setBranchName(pending.branch);
     setVersionPath(pending.path);
     const resumedSteps = buildResumedSteps(pending.lastCompletedStep);
@@ -192,15 +205,45 @@ export function InstallVersionScreen({
     { isActive: currentStepIndex === 0 && focus === 'installed' },
   );
 
-  // Error recovery: Relancer / Retour
+  // Error recovery: Relancer / Retour / c=copier commande
   useInput(
-    (_char, key) => {
+    (char, key) => {
       if (key.leftArrow)  setErrorAction(0);
       if (key.rightArrow) setErrorAction(1);
       if (key.escape)     onBack();
       if (key.return)     errorAction === 0 ? handleRetry() : onBack();
+      if (char === 'c') {
+        const err = steps.find(s => s.status === 'error');
+        const cmd = extractCopyableCommand(err?.errorMessage ?? '');
+        if (cmd) {
+          copyToClipboard(cmd);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }
+      }
     },
     { isActive: !!steps.find(s => s.status === 'error') && currentStepIndex > 0 },
+  );
+
+  // Python version warning: Continuer / Annuler
+  useInput(
+    (_char, key) => {
+      if (key.leftArrow)  setPythonWarningAction(0);
+      if (key.rightArrow) setPythonWarningAction(1);
+      if (key.escape)     { onBack(); return; }
+      if (key.return) {
+        if (pythonWarningAction === 1) { onBack(); return; }
+        // Continue with current python
+        setPythonWarning(null);
+        dispatchRef.current({
+          type: 'SET_STATUS', id: 'check_python_version', status: 'success',
+          errorMessage: `${pythonWarning?.current ?? '?'} (non recommandé)`,
+        });
+        void saveProgressRef.current('check_python_version');
+        setCurrentStepIndex(4);
+      }
+    },
+    { isActive: pythonWarning !== null },
   );
 
   // Done: wait for Escape before navigating back
@@ -222,6 +265,7 @@ export function InstallVersionScreen({
             branch: branchNameRef.current,
             path: versionPathRef.current,
             lastCompletedStep,
+            pythonBin: pythonBinRef.current,
           },
         },
       });
@@ -289,6 +333,34 @@ export function InstallVersionScreen({
     setCurrentStepIndex(3);
   }, []);
 
+  const runCheckPythonVersion = useCallback(async () => {
+    dispatchRef.current({ type: 'SET_STATUS', id: 'check_python_version', status: 'running' });
+    setPythonWarning(null);
+
+    const req = getOdooPythonReq(branchNameRef.current);
+    const foundBin = await findPythonBinary(req.recommended);
+
+    if (foundBin) {
+      pythonBinRef.current = foundBin;
+      const ver = await getPythonVersion(foundBin) ?? req.recommended;
+      dispatchRef.current({
+        type: 'SET_STATUS', id: 'check_python_version', status: 'success',
+        errorMessage: ver,
+      });
+      void saveProgressRef.current('check_python_version');
+      setCurrentStepIndex(4);
+      return;
+    }
+
+    // Recommended version not found — detect current Python for the warning message
+    const currentBin = 'python3';
+    const currentVer = await getPythonVersion(currentBin) ?? await getPythonVersion('python') ?? '?';
+    pythonBinRef.current = undefined; // will fall back to default in createVenv
+    setPythonWarningAction(0);
+    setPythonWarning({ recommended: req.recommended, current: currentVer, currentBin });
+    dispatchRef.current({ type: 'SET_STATUS', id: 'check_python_version', status: 'running' });
+  }, []);
+
   const runCreateDir = useCallback(async () => {
     dispatchRef.current({ type: 'SET_STATUS', id: 'create_dir', status: 'running' });
     try {
@@ -298,7 +370,7 @@ export function InstallVersionScreen({
         errorMessage: versionPathRef.current,
       });
       void saveProgressRef.current('create_dir');
-      setCurrentStepIndex(4);
+      setCurrentStepIndex(5);
     } catch (err) {
       dispatchRef.current({
         type: 'SET_STATUS', id: 'create_dir', status: 'error',
@@ -314,7 +386,7 @@ export function InstallVersionScreen({
     if (await dirExists(dest)) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'clone_community', status: 'success', errorMessage: `${dest} (déjà présent)` });
       void saveProgressRef.current('clone_community');
-      setCurrentStepIndex(5);
+      setCurrentStepIndex(6);
       return;
     }
     let lastUpdate = 0;
@@ -329,7 +401,7 @@ export function InstallVersionScreen({
     if (r.ok) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'clone_community', status: 'success', errorMessage: dest });
       void saveProgressRef.current('clone_community');
-      setCurrentStepIndex(5);
+      setCurrentStepIndex(6);
     } else {
       dispatchRef.current({ type: 'SET_STATUS', id: 'clone_community', status: 'error', errorMessage: r.error });
     }
@@ -339,7 +411,7 @@ export function InstallVersionScreen({
     if (!hasEnterpriseRef.current) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'clone_enterprise', status: 'success', errorMessage: 'ignoré' });
       void saveProgressRef.current('clone_enterprise');
-      setCurrentStepIndex(6);
+      setCurrentStepIndex(7);
       return;
     }
     dispatchRef.current({ type: 'SET_STATUS', id: 'clone_enterprise', status: 'running' });
@@ -348,7 +420,7 @@ export function InstallVersionScreen({
     if (await dirExists(dest)) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'clone_enterprise', status: 'success', errorMessage: `${dest} (déjà présent)` });
       void saveProgressRef.current('clone_enterprise');
-      setCurrentStepIndex(6);
+      setCurrentStepIndex(7);
       return;
     }
     let lastUpdate = 0;
@@ -363,7 +435,7 @@ export function InstallVersionScreen({
     if (r.ok) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'clone_enterprise', status: 'success', errorMessage: dest });
       void saveProgressRef.current('clone_enterprise');
-      setCurrentStepIndex(6);
+      setCurrentStepIndex(7);
     } else {
       dispatchRef.current({ type: 'SET_STATUS', id: 'clone_enterprise', status: 'error', errorMessage: r.error });
     }
@@ -372,11 +444,11 @@ export function InstallVersionScreen({
   const runCreateVenv = useCallback(async () => {
     dispatchRef.current({ type: 'SET_STATUS', id: 'create_venv', status: 'running' });
     const venvPath = join(versionPathRef.current, '.venv');
-    const r = await createVenv(venvPath);
+    const r = await createVenv(venvPath, pythonBinRef.current);
     if (r.ok) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'create_venv', status: 'success', errorMessage: venvPath });
       void saveProgressRef.current('create_venv');
-      setCurrentStepIndex(7);
+      setCurrentStepIndex(8);
     } else {
       dispatchRef.current({ type: 'SET_STATUS', id: 'create_venv', status: 'error', errorMessage: r.error });
     }
@@ -389,11 +461,11 @@ export function InstallVersionScreen({
     const requirementsPath = join(versionPathRef.current, 'community', 'requirements.txt');
     const r = await installRequirements(pipPath, requirementsPath, line => {
       setPipOutput(line);
-    });
+    }, pythonBinRef.current);
     if (r.ok) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'install_requirements', status: 'success' });
       void saveProgressRef.current('install_requirements');
-      setCurrentStepIndex(8);
+      setCurrentStepIndex(9);
     } else {
       dispatchRef.current({ type: 'SET_STATUS', id: 'install_requirements', status: 'error', errorMessage: r.error });
     }
@@ -412,7 +484,16 @@ export function InstallVersionScreen({
       const { [branch]: _removed, ...restPending } = current.pending_installs ?? {};
       await writeConfig({
         ...current,
-        odoo_versions: { ...current.odoo_versions, [branch]: { branch, path: base } },
+        odoo_versions: {
+          ...current.odoo_versions,
+          [branch]: {
+            branch,
+            path: base,
+            pythonVersion: pythonBinRef.current
+              ? await getPythonVersion(pythonBinRef.current) ?? undefined
+              : undefined,
+          },
+        },
         pending_installs: restPending,
       });
       dispatchRef.current({ type: 'SET_STATUS', id: 'create_extras', status: 'success' });
@@ -430,21 +511,22 @@ export function InstallVersionScreen({
     switch (currentStepIndex) {
       case 1: void runCheckCommunity(); break;
       case 2: void runCheckEnterprise(); break;
-      case 3: void runCreateDir(); break;
-      case 4: void runCloneCommunity(); break;
-      case 5: void runCloneEnterprise(); break;
-      case 6: void runCreateVenv(); break;
-      case 7: void runInstallRequirements(); break;
-      case 8: void runCreateExtras(); break;
+      case 3: void runCheckPythonVersion(); break;
+      case 4: void runCreateDir(); break;
+      case 5: void runCloneCommunity(); break;
+      case 6: void runCloneEnterprise(); break;
+      case 7: void runCreateVenv(); break;
+      case 8: void runInstallRequirements(); break;
+      case 9: void runCreateExtras(); break;
     }
     // retryCount in deps: re-triggers the current step when user retries
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStepIndex, retryCount, runCheckCommunity, runCheckEnterprise, runCreateDir, runCloneCommunity, runCloneEnterprise, runCreateVenv, runInstallRequirements, runCreateExtras]);
+  }, [currentStepIndex, retryCount, runCheckCommunity, runCheckEnterprise, runCheckPythonVersion, runCreateDir, runCloneCommunity, runCloneEnterprise, runCreateVenv, runInstallRequirements, runCreateExtras]);
 
-  const isCloneStep = currentStepIndex === 4 || currentStepIndex === 5;
-  const isPipStep = currentStepIndex === 7;
+  const isCloneStep = currentStepIndex === 5 || currentStepIndex === 6;
+  const isPipStep = currentStepIndex === 8;
   const errorStep = steps.find(s => s.status === 'error');
-  const cloneLabel = currentStepIndex === 4 ? 'community' : 'enterprise';
+  const cloneLabel = currentStepIndex === 5 ? 'community' : 'enterprise';
 
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -542,7 +624,7 @@ export function InstallVersionScreen({
           )}
 
           {/* Running — non-clone steps */}
-          {currentStepIndex > 0 && !isCloneStep && !done && !errorStep && (
+          {currentStepIndex > 0 && !isCloneStep && !done && !errorStep && !pythonWarning && (
             <Box marginTop={1} flexDirection="column" gap={0}>
               <Text color={textColor}>
                 {'Installation de '}
@@ -555,9 +637,64 @@ export function InstallVersionScreen({
             </Box>
           )}
 
+          {/* Python version warning */}
+          {pythonWarning && (
+            <Box flexDirection="column" gap={1} marginTop={1}>
+              <Text color="yellow" bold>
+                {'⚠  Python '}
+                <Text bold>{pythonWarning.recommended}</Text>
+                {` recommandé pour Odoo ${branchName}`}
+              </Text>
+              <Text color={textColor}>
+                {'Python détecté sur ce système : '}
+                <Text color="white">{pythonWarning.current}</Text>
+              </Text>
+              <Box flexDirection="column" gap={0} marginTop={1}>
+                <Text color={textColor} bold>{'Pour installer Python ' + pythonWarning.recommended + ' :'}</Text>
+                <Box flexDirection="column" gap={1} marginTop={1}>
+                  <Box flexDirection="column" gap={0}>
+                    <Text color={getSecondaryColor(config)}>{'deadsnakes (Ubuntu/Debian) :'}</Text>
+                    <Text color={textColor} dimColor>{'  sudo add-apt-repository ppa:deadsnakes/ppa'}</Text>
+                    <Text color={textColor} dimColor>{`  sudo apt install python${pythonWarning.recommended} python${pythonWarning.recommended}-venv`}</Text>
+                  </Box>
+                  <Box flexDirection="column" gap={0}>
+                    <Text color={getSecondaryColor(config)}>{'pyenv (tous systèmes) :'}</Text>
+                    <Text color={textColor} dimColor>{`  pyenv install ${pythonWarning.recommended}`}</Text>
+                  </Box>
+                  <Box flexDirection="column" gap={0}>
+                    <Text color={getSecondaryColor(config)}>{'Homebrew (macOS) :'}</Text>
+                    <Text color={textColor} dimColor>{`  brew install python@${pythonWarning.recommended}`}</Text>
+                  </Box>
+                </Box>
+              </Box>
+              <Box flexDirection="row" gap={2} marginTop={1}>
+                <Text
+                  color={pythonWarningAction === 0 ? 'black' : 'yellow'}
+                  backgroundColor={pythonWarningAction === 0 ? 'yellow' : undefined}
+                  bold={pythonWarningAction === 0}
+                >
+                  {` Continuer avec ${pythonWarning.current} ⚠ `}
+                </Text>
+                <Text
+                  color={pythonWarningAction === 1 ? 'black' : 'white'}
+                  backgroundColor={pythonWarningAction === 1 ? 'gray' : undefined}
+                  bold={pythonWarningAction === 1}
+                >
+                  {' ← Annuler '}
+                </Text>
+              </Box>
+              <Text color={textColor} dimColor>{'◀▶ choisir  ·  ↵ confirmer  ·  Échap retour'}</Text>
+            </Box>
+          )}
+
           {/* Error recovery actions */}
           {errorStep && currentStepIndex > 0 && (
             <Box flexDirection="column" gap={1} marginTop={1}>
+              {extractCopyableCommand(errorStep.errorMessage ?? '') && (
+                <Text color={copied ? 'green' : textColor} dimColor={!copied}>
+                  {copied ? '  ✓ Copié !' : '  c → copier commande'}
+                </Text>
+              )}
               <Box flexDirection="row" gap={2}>
                 <Text
                   color={errorAction === 0 ? 'black' : 'white'}
