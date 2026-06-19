@@ -24,6 +24,7 @@ type MigrationPhase =
 
 const SYSTEM_DBS = new Set(['postgres', 'template0', 'template1']);
 const ALL_VERSIONS = ['13.0', '14.0', '15.0', '16.0', '17.0', '18.0', '19.0'];
+const LOG_VISIBLE = 10;
 
 function targetVersions(currentBranch: string): string[] {
   return ALL_VERSIONS.filter(v => parseFloat(v) > parseFloat(currentBranch));
@@ -64,6 +65,7 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
   const [lines, setLines] = useState<string[]>([]);
   const [migrationOk, setMigrationOk] = useState<boolean | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [logScroll, setLogScroll] = useState(0);
 
   // Load PostgreSQL databases
   useEffect(() => {
@@ -129,13 +131,9 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     if (key.return) {
       const type = typeSel === 0 ? 'test' : 'production';
       setSelectedType(type);
-      if (type === 'production') {
-        setEnterpriseCode('');
-        setCodeError('');
-        setPhase('enter_code');
-      } else {
-        setPhase('confirm');
-      }
+      setEnterpriseCode('');
+      setCodeError('');
+      setPhase('enter_code');
     }
   }, { isActive: phase === 'select_type' });
 
@@ -144,8 +142,8 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
   useInput((_char, key) => {
     if (key.escape) { setPhase('select_type'); return; }
     if (key.return) {
-      if (!enterpriseCode.trim()) {
-        setCodeError('Le code Enterprise est requis.');
+      if (selectedType === 'production' && !enterpriseCode.trim()) {
+        setCodeError('Le code Enterprise est requis en mode production.');
         return;
       }
       setCodeError('');
@@ -163,11 +161,19 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     if (key.return) void runMigration();
   }, { isActive: phase === 'confirm' });
 
-  // ── done / error ──────────────────────────────────────────────────────────
+  // ── done ──────────────────────────────────────────────────────────────────
 
   useInput((_char, key) => {
     if (key.escape || key.return) onBack();
-  }, { isActive: phase === 'done' || phase === 'error' });
+  }, { isActive: phase === 'done' });
+
+  // ── error ──────────────────────────────────────────────────────────────────
+
+  useInput((_char, key) => {
+    if (key.escape || key.return) { onBack(); return; }
+    if (key.upArrow)   setLogScroll(p => Math.min(p + 1, Math.max(0, lines.length - LOG_VISIBLE)));
+    if (key.downArrow) setLogScroll(p => Math.max(0, p - 1));
+  }, { isActive: phase === 'error' });
 
   // ── runner ────────────────────────────────────────────────────────────────
 
@@ -176,6 +182,7 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     setLines([]);
     setMigrationOk(null);
     setErrorMsg('');
+    setLogScroll(0);
     setPhase('running');
 
     const result = await spawnMigration(
@@ -330,10 +337,14 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
               <Text color={primaryColor} bold>{selectedVersion}</Text>
               <Text color="yellow" bold>· Production</Text>
             </Box>
-            <Text color={textColor} dimColor>Code Enterprise :</Text>
+            <Text color={textColor} dimColor>
+              {'Code Enterprise'}
+              {selectedType === 'test' ? <Text dimColor> (optionnel)</Text> : null}
+              {' :'}
+            </Text>
             <Box flexDirection="row" gap={1}>
               <Text color={primaryColor}>{'> '}</Text>
-              <TextInput value={enterpriseCode} onChange={setEnterpriseCode} />
+              <TextInput value={enterpriseCode} onChange={setEnterpriseCode} placeholder={selectedType === 'test' ? 'laisser vide si absent' : ''} />
             </Box>
             {codeError ? <Text color="red">{codeError}</Text> : null}
             <Text color={textColor} dimColor>↵ valider  ·  Échap retour</Text>
@@ -414,6 +425,34 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
                 <Text color="red" wrap="wrap">{errorMsg}</Text>
               </Box>
             ) : null}
+            {lines.length > 0 && (() => {
+              const total = lines.length;
+              const end = total - logScroll;
+              const start = Math.max(0, end - LOG_VISIBLE);
+              const visible = lines.slice(start, end);
+              const canUp = logScroll < total - LOG_VISIBLE;
+              const canDown = logScroll > 0;
+              return (
+                <>
+                  <Box flexDirection="row" gap={2}>
+                    <Text color={textColor} dimColor>Logs ({total} lignes)</Text>
+                    {(canUp || canDown) && (
+                      <Text color={textColor} dimColor>
+                        {canUp ? '↑ remonter  ' : ''}
+                        {canDown ? '↓ descendre' : ''}
+                      </Text>
+                    )}
+                  </Box>
+                  <Box flexDirection="column" gap={0} borderStyle="round" borderColor="gray" paddingX={1}>
+                    {canUp && <Text color={textColor} dimColor>{'  ···'}</Text>}
+                    {visible.map((l, i) => (
+                      <Text key={start + i} color={textColor} dimColor wrap="truncate-end">{l}</Text>
+                    ))}
+                    {canDown && <Text color={textColor} dimColor>{'  ···'}</Text>}
+                  </Box>
+                </>
+              );
+            })()}
             <Text color={textColor} dimColor>↵/Échap retour</Text>
           </Box>
         )}

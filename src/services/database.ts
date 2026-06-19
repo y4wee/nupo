@@ -379,29 +379,47 @@ export function spawnMigration(
   onLine: (line: string) => void,
 ): Promise<DatabaseResult> {
   const base = `python3 <(curl -s https://upgrade.odoo.com/upgrade) ${type} -d ${dbName} -t ${targetVersion}`;
-  const cmd = type === 'production' && enterpriseCode ? `${base} -c ${enterpriseCode}` : base;
+  const cmd = enterpriseCode ? `${base} -c ${enterpriseCode}` : base;
 
   return new Promise(resolve => {
     const proc = spawn('bash', ['-c', cmd]);
     let stderr = '';
+    let errorLine = '';
+
+    const detectError = (t: string) => {
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} ERROR:/i.test(t) || /^ERROR:/i.test(t)) {
+        errorLine = t.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} ERROR:\s*/i, '')
+                     .replace(/^ERROR:\s*/i, '');
+      }
+    };
 
     proc.stdout.on('data', (chunk: Buffer) => {
       for (const l of chunk.toString().split('\n')) {
         const t = l.trim();
-        if (t) onLine(t);
+        if (!t) continue;
+        onLine(t);
+        detectError(t);
       }
     });
 
     proc.stderr.on('data', (chunk: Buffer) => {
       for (const l of chunk.toString().split('\n')) {
         const t = l.trim();
-        if (t) { stderr += t + '\n'; onLine(t); }
+        if (!t) continue;
+        stderr += t + '\n';
+        onLine(t);
+        detectError(t);
       }
     });
 
     proc.on('close', code => {
-      if (code === 0) resolve({ ok: true });
-      else resolve({ ok: false, error: stderr.trim() || `Migration exited with code ${code}` });
+      if (errorLine) {
+        resolve({ ok: false, error: errorLine });
+      } else if (code === 0) {
+        resolve({ ok: true });
+      } else {
+        resolve({ ok: false, error: stderr.trim() || `Migration exited with code ${code}` });
+      }
     });
 
     proc.on('error', err => resolve({ ok: false, error: err.message }));
