@@ -56,6 +56,45 @@ export async function inspectDump(zipPath: string): Promise<DumpInfo> {
   }
 }
 
+/** Reads database.expiration_date from ir_config_parameter */
+export async function getExpirationDate(dbName: string): Promise<{ ok: boolean; date?: string; error?: string }> {
+  try {
+    const { stdout } = await execFileAsync('psql', [
+      '--no-password', '--dbname', dbName, '--tuples-only',
+      '--command', "SELECT value FROM ir_config_parameter WHERE key = 'database.expiration_date'",
+    ]);
+    const date = stdout.split('\n').map(l => l.trim()).filter(Boolean)[0];
+    return { ok: true, date };
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException & { stderrOutput?: string };
+    return { ok: false, error: e.stderrOutput?.trim() || (e as Error).message };
+  }
+}
+
+/** Extends database.expiration_date by +1 year */
+export async function extendExpirationDate(dbName: string): Promise<DatabaseResult & { newDate?: string; currentDate?: string }> {
+  const current = await getExpirationDate(dbName);
+  if (!current.ok || !current.date) {
+    return { ok: false, error: current.error ?? "Impossible de lire la date d'expiration" };
+  }
+  const d = new Date(current.date);
+  if (isNaN(d.getTime())) {
+    return { ok: false, error: `Format de date invalide : ${current.date}` };
+  }
+  d.setFullYear(d.getFullYear() + 1);
+  const newDate = d.toISOString().slice(0, 10);
+  try {
+    await execFileAsync('psql', [
+      '--no-password', '--dbname', dbName,
+      '--command', `UPDATE ir_config_parameter SET value = '${newDate}' WHERE key = 'database.expiration_date'`,
+    ]);
+    return { ok: true, newDate, currentDate: current.date };
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException & { stderrOutput?: string };
+    return { ok: false, error: e.stderrOutput?.trim() || (e as Error).message };
+  }
+}
+
 /** Lists existing PostgreSQL databases */
 export async function listDatabases(): Promise<string[]> {
   try {
