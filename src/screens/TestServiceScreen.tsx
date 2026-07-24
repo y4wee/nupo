@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
-import { stat } from 'fs/promises';
+import { stat, readdir } from 'fs/promises';
 import { join } from 'path';
 import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -55,9 +55,21 @@ function buildAddonsPaths(service: OdooServiceConfig): string[] {
 
 async function checkModuleExists(service: OdooServiceConfig, moduleName: string): Promise<boolean> {
   for (const p of buildAddonsPaths(service)) {
+    // Check directly in the addons path
     try {
       const s = await stat(join(p, moduleName));
       if (s.isDirectory()) return true;
+    } catch {}
+    // Also check one level deep (modules in sub-folders of the repo)
+    try {
+      const entries = await readdir(p, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        try {
+          const s = await stat(join(p, entry.name, moduleName));
+          if (s.isDirectory()) return true;
+        } catch {}
+      }
     } catch {}
   }
   return false;
