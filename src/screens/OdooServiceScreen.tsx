@@ -121,6 +121,7 @@ export function OdooServiceScreen({
         initialService={activeScreen.service}
         onComplete={() => { onConfigChange(); }}
         onBack={() => { setActiveScreen(null); setPhase(isNew ? 'list' : 'actions'); }}
+        onParamSaved={(updatedSvc) => setSelectedSvc(updatedSvc)}
       />
     );
   }

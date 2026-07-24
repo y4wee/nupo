@@ -14,6 +14,7 @@ interface ConfigureServiceScreenProps {
   initialService?: OdooServiceConfig;
   onComplete: () => void;
   onBack: () => void;
+  onParamSaved?: (service: OdooServiceConfig) => void;
 }
 
 // ── Step type ────────────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ export function ConfigureServiceScreen({
   initialService,
   onComplete,
   onBack,
+  onParamSaved,
 }: ConfigureServiceScreenProps) {
   const isEditing = !!initialService;
   const versions = sortedOdooVersions(Object.values(config.odoo_versions));
@@ -133,7 +135,7 @@ export function ConfigureServiceScreen({
     version: OdooVersion;
     useEnterprise: boolean;
     folders: string[];
-  }) => {
+  }): Promise<OdooServiceConfig> => {
     const confPath = join(opts.version.path, 'config', `${opts.name}.conf`);
     const service: OdooServiceConfig = {
       name: opts.name,
@@ -155,6 +157,7 @@ export function ConfigureServiceScreen({
     services[opts.name] = service;
     await writeConfig({ ...current, odoo_services: services });
     lastSavedName.current = opts.name;
+    return service;
   }, []);
 
   // ── Create mode: version → enterprise → custom_folders → save ────────────
@@ -212,7 +215,8 @@ export function ConfigureServiceScreen({
     setEditSaving(true);
     setSaveError(null);
     try {
-      await buildAndSave({ name: newName, version, useEnterprise: newUseEnterprise, folders: newFolders });
+      const savedService = await buildAndSave({ name: newName, version, useEnterprise: newUseEnterprise, folders: newFolders });
+      onParamSaved?.(savedService);
       // Commit new values to state
       if (updates.name         !== undefined) { setConfirmedName(updates.name); setNameInput(updates.name); }
       if (updates.versionIdx   !== undefined)   setSelectedVersionIdx(updates.versionIdx);
