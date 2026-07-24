@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
-import { stat, readdir } from 'fs/promises';
+import { stat, readdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -53,26 +53,42 @@ function buildAddonsPaths(service: OdooServiceConfig): string[] {
   return paths;
 }
 
-async function checkModuleExists(service: OdooServiceConfig, moduleName: string): Promise<boolean> {
-  for (const p of buildAddonsPaths(service)) {
-    // Check directly in the addons path
+async function getConfAddonsPaths(confPath: string): Promise<string[]> {
+  try {
+    const content = await readFile(confPath, 'utf8');
+    const match = content.match(/^addons_path\s*=\s*(.+)$/m);
+    if (!match) return [];
+    return match[1]!.split(',').map(p => p.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function checkModuleExists(
+  service: OdooServiceConfig,
+  moduleName: string,
+): Promise<{ found: boolean; paths: string[] }> {
+  const builtPaths = buildAddonsPaths(service);
+  const confPaths  = await getConfAddonsPaths(service.confPath);
+  const paths      = [...new Set([...builtPaths, ...confPaths])];
+
+  for (const p of paths) {
     try {
       const s = await stat(join(p, moduleName));
-      if (s.isDirectory()) return true;
+      if (s.isDirectory()) return { found: true, paths };
     } catch {}
-    // Also check one level deep (modules in sub-folders of the repo)
     try {
       const entries = await readdir(p, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         try {
           const s = await stat(join(p, entry.name, moduleName));
-          if (s.isDirectory()) return true;
+          if (s.isDirectory()) return { found: true, paths };
         } catch {}
       }
     } catch {}
   }
-  return false;
+  return { found: false, paths };
 }
 
 export function TestServiceScreen({ config, leftWidth, service, onBack }: TestServiceScreenProps) {
@@ -143,9 +159,8 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
       setCheckError(null);
       setPhase('checking');
       try {
-        const paths = buildAddonsPaths(service);
-        const exists = await checkModuleExists(service, trimmed);
-        if (!exists) {
+        const { found, paths } = await checkModuleExists(service, trimmed);
+        if (!found) {
           setCheckError(`Module "${trimmed}" introuvable.`);
           setCheckedPaths(paths);
           setPhase('input_value');
