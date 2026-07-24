@@ -38,38 +38,57 @@ export function OdooServiceScreen({
   onServiceStopped,
   autoStart,
 }: OdooServiceScreenProps) {
-  const services    = Object.values(config.odoo_services ?? {});
+  const allServices  = Object.values(config.odoo_services ?? {})
+    .sort((a, b) => a.name.localeCompare(b.name));
   const textColor   = getTextColor(config);
   const cursorColor = getCursorColor(config);
-  const itemCount   = 1 + services.length; // 0 = nouveau, 1..n = services
 
-  const [phase,          setPhase]          = useState<Phase>('list');
-  const [listSelected,   setListSelected]   = useState(0);
-  const [actionCursor,   setActionCursor]   = useState(0);
-  const [selectedSvc,    setSelectedSvc]    = useState<OdooServiceConfig | null>(null);
-  const [activeScreen,   setActiveScreen]   = useState<ActiveScreen | null>(null);
+  const [phase,        setPhase]        = useState<Phase>('list');
+  const [listSelected, setListSelected] = useState(0);
+  const [search,       setSearch]       = useState('');
+  const [actionCursor, setActionCursor] = useState(0);
+  const [selectedSvc,  setSelectedSvc]  = useState<OdooServiceConfig | null>(null);
+  const [activeScreen, setActiveScreen] = useState<ActiveScreen | null>(null);
+
+  const filteredServices = search
+    ? allServices.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
+    : allServices;
+  const itemCount = 1 + filteredServices.length;
 
   // Auto-navigate to start screen for CLI --start flag
   useEffect(() => {
     if (!autoStart) return;
-    const svc = services.find(s => s.name === autoStart.serviceName);
+    const svc = allServices.find(s => s.name === autoStart.serviceName);
     if (svc) setActiveScreen({ type: 'start', service: svc });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── List phase input ──────────────────────────────────────────────────────
 
-  useInput((_char, key) => {
-    if (key.escape) { onBack(); return; }
-    if (key.upArrow)   setListSelected(p => (p - 1 + itemCount) % itemCount);
-    if (key.downArrow) setListSelected(p => (p + 1) % itemCount);
+  useInput((char, key) => {
+    if (key.escape) {
+      if (search) { setSearch(''); setListSelected(0); return; }
+      onBack();
+      return;
+    }
+    if (key.upArrow)   { setListSelected(p => (p - 1 + itemCount) % itemCount); return; }
+    if (key.downArrow) { setListSelected(p => (p + 1) % itemCount); return; }
     if (key.return) {
       if (listSelected === 0) {
         setActiveScreen({ type: 'configure', service: undefined });
       } else {
-        setSelectedSvc(services[listSelected - 1]!);
-        setActionCursor(0);
-        setPhase('actions');
+        const svc = filteredServices[listSelected - 1];
+        if (svc) { setSelectedSvc(svc); setActionCursor(0); setPhase('actions'); }
       }
+      return;
+    }
+    if (key.backspace || key.delete) {
+      setSearch(p => p.slice(0, -1));
+      setListSelected(0);
+      return;
+    }
+    if (char && !key.ctrl && !key.meta && char.length === 1) {
+      setSearch(p => p + char);
+      setListSelected(0);
     }
   }, { isActive: phase === 'list' && activeScreen === null });
 
@@ -140,7 +159,17 @@ export function OdooServiceScreen({
         <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} gap={1}>
           <Text color={getSecondaryColor(config)} bold>Services</Text>
 
-          <Box flexDirection="column" marginTop={1} gap={0}>
+          {/* Search bar */}
+          <Box borderStyle="round" borderColor={search ? 'cyan' : 'gray'} paddingX={1} flexDirection="row" gap={1}>
+            <Text color="gray" dimColor>{'rechercher ›'}</Text>
+            {search
+              ? <Text color="white">{search}</Text>
+              : <Text color="gray" dimColor>{'filtrer par nom…'}</Text>
+            }
+          </Box>
+
+          <Box flexDirection="column" gap={0}>
+            {/* Nouveau service */}
             <Text
               color={listSelected === 0 ? 'black' : 'cyan'}
               backgroundColor={listSelected === 0 ? cursorColor : undefined}
@@ -149,15 +178,19 @@ export function OdooServiceScreen({
               {` ${listSelected === 0 ? '▶' : ' '} + Nouveau service`}
             </Text>
 
-            {services.length > 0 && (
+            {filteredServices.length > 0 && (
               <Text color={textColor} dimColor>{'  ─────────────────'}</Text>
             )}
 
-            {services.length === 0 && (
+            {allServices.length === 0 && (
               <Text color={textColor} dimColor>{'  Aucun service configuré'}</Text>
             )}
 
-            {services.map((s, i) => {
+            {allServices.length > 0 && filteredServices.length === 0 && (
+              <Text color={textColor} dimColor>{`  Aucun service correspondant à "${search}"`}</Text>
+            )}
+
+            {filteredServices.map((s, i) => {
               const isSel = i + 1 === listSelected;
               return (
                 <Text
@@ -176,8 +209,11 @@ export function OdooServiceScreen({
             })}
           </Box>
 
-          <Box marginTop={1}>
-            <Text color={textColor} dimColor>{'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour'}</Text>
+          <Box>
+            <Text color={textColor} dimColor>
+              {'↑↓ naviguer  ·  ↵ sélectionner  ·  taper pour filtrer  ·  Échap'}
+              {search ? ' effacer filtre' : ' retour'}
+            </Text>
           </Box>
         </Box>
       </Box>
