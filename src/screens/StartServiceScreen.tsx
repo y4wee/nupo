@@ -14,6 +14,7 @@ interface StartServiceScreenProps {
   onServiceRunning: (service: OdooServiceConfig) => void;
   onServiceStopped: () => void;
   autoStart?: CliStartArgs;
+  initialService?: OdooServiceConfig;
 }
 
 type Step = 'select' | 'args_list' | 'input_db' | 'input_module' | 'input_install' | 'select_dev' | 'running';
@@ -104,13 +105,14 @@ export function StartServiceScreen({
   onServiceRunning,
   onServiceStopped,
   autoStart,
+  initialService,
 }: StartServiceScreenProps) {
   const { rows } = useTerminalSize();
   const services = Object.values(config.odoo_services ?? {});
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
 
-  const [step,       setStep]       = useState<Step>('select');
+  const [step,       setStep]       = useState<Step>(initialService ? 'args_list' : 'select');
   const [selected,   setSelected]   = useState(0);
   const [argsCursor, setArgsCursor] = useState(0);
   const [devCursor,  setDevCursor]  = useState(0);
@@ -143,7 +145,7 @@ export function StartServiceScreen({
     };
   }, []);
 
-  const service  = services[selected] as OdooServiceConfig | undefined;
+  const service  = initialService ?? services[selected] as OdooServiceConfig | undefined;
   const warnNoDb = !!(moduleName || installName) && !dbName;
 
   // Fixed rows consumed outside the log box:
@@ -229,7 +231,7 @@ export function StartServiceScreen({
   }, { isActive: step === 'select' });
 
   useInput((char, key) => {
-    if (key.escape) { setStep('select'); return; }
+    if (key.escape) { if (initialService) { onBack(); } else { setStep('select'); } return; }
     if (key.upArrow)   setArgsCursor(p => Math.max(0, p - 1));
     if (key.downArrow) setArgsCursor(p => Math.min(ARGS_ITEMS.length - 1, p + 1));
     if (key.return || char === ' ') {

@@ -5,7 +5,6 @@ import { LeftPanel } from '../components/LeftPanel.js';
 import { InstallVersionScreen } from './InstallVersionScreen.js';
 import { UpgradeVersionScreen } from './UpgradeVersionScreen.js';
 import { OdooServiceScreen } from './OdooServiceScreen.js';
-import { StartServiceScreen } from './StartServiceScreen.js';
 import { PipInstallScreen } from './PipInstallScreen.js';
 
 interface OdooScreenProps {
@@ -31,13 +30,8 @@ const ODOO_OPTIONS = [
   },
   {
     id: 'service' as const,
-    label: 'Configurer Service Odoo',
-    description: "Créer ou modifier un fichier de configuration .conf pour démarrer un service Odoo.",
-  },
-  {
-    id: 'start' as const,
-    label: 'Démarrer Service Odoo',
-    description: "Lancer un service Odoo configuré avec des arguments supplémentaires optionnels.",
+    label: 'Services',
+    description: "Gérer les services Odoo : configurer, démarrer ou lancer les tests unitaires d'un service.",
   },
   {
     id: 'pip' as const,
@@ -46,7 +40,7 @@ const ODOO_OPTIONS = [
   },
 ];
 
-type OdooSubScreen = 'install' | 'upgrade' | 'service' | 'start' | 'pip';
+type OdooSubScreen = 'install' | 'upgrade' | 'service' | 'pip';
 
 export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServiceRunning, onServiceStopped, autoStart }: OdooScreenProps) {
   const [subScreen, setSubScreen] = useState<OdooSubScreen | null>(null);
@@ -54,9 +48,9 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
 
-  // Auto-navigate to start screen when CLI args are present
+  // Auto-navigate to services screen when CLI args are present
   useEffect(() => {
-    if (autoStart) setSubScreen('start');
+    if (autoStart) setSubScreen('service');
   }, []);
 
   useInput(
@@ -97,16 +91,6 @@ export function OdooScreen({ leftWidth, config, onBack, onConfigChange, onServic
         leftWidth={leftWidth}
         onBack={() => setSubScreen(null)}
         onConfigChange={() => { onConfigChange(); setSubScreen(null); }}
-      />
-    );
-  }
-
-  if (subScreen === 'start') {
-    return (
-      <StartServiceScreen
-        config={config}
-        leftWidth={leftWidth}
-        onBack={() => setSubScreen(null)}
         onServiceRunning={onServiceRunning}
         onServiceStopped={onServiceStopped}
         autoStart={autoStart}
