@@ -86,6 +86,7 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
   const [dbInput,     setDbInput]     = useState('');
   const [valueInput,  setValueInput]  = useState('');
   const [checkError,  setCheckError]  = useState<string | null>(null);
+  const [checkedPaths, setCheckedPaths] = useState<string[]>([]);
 
   const [logs,         setLogs]         = useState<string[]>([]);
   const [exitCode,     setExitCode]     = useState<number | null>(null);
@@ -142,14 +143,17 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
       setCheckError(null);
       setPhase('checking');
       try {
+        const paths = buildAddonsPaths(service);
         const exists = await checkModuleExists(service, trimmed);
         if (!exists) {
-          setCheckError(`Module "${trimmed}" introuvable dans les chemins d'addons.`);
+          setCheckError(`Module "${trimmed}" introuvable.`);
+          setCheckedPaths(paths);
           setPhase('input_value');
           return;
         }
       } catch {
         setCheckError('Erreur lors de la vérification du module.');
+        setCheckedPaths([]);
         setPhase('input_value');
         return;
       }
@@ -323,7 +327,12 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
               )}
             </Box>
             {checkError && (
-              <Text color="red">✗ {checkError}</Text>
+              <Box flexDirection="column" gap={0}>
+                <Text color="red">✗ {checkError}</Text>
+                {checkedPaths.map(p => (
+                  <Text key={p} color="gray" dimColor>  {p}</Text>
+                ))}
+              </Box>
             )}
             {phase !== 'checking' && (
               <Text color={textColor} dimColor>↵ lancer les tests  ·  Échap retour</Text>
