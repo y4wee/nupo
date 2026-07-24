@@ -113,13 +113,14 @@ export function OdooServiceScreen({
   // ── Sub-screen routing ────────────────────────────────────────────────────
 
   if (activeScreen?.type === 'configure') {
+    const isNew = activeScreen.service === undefined;
     return (
       <ConfigureServiceScreen
         config={config}
         leftWidth={leftWidth}
         initialService={activeScreen.service}
         onComplete={() => { onConfigChange(); }}
-        onBack={() => { setActiveScreen(null); setPhase('list'); }}
+        onBack={() => { setActiveScreen(null); setPhase(isNew ? 'list' : 'actions'); }}
       />
     );
   }
