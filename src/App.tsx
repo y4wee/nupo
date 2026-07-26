@@ -12,6 +12,7 @@ import { ConfigScreen } from './screens/ConfigScreen.js';
 import { DatabaseScreen } from './screens/DatabaseScreen.js';
 import { IdeScreen } from './screens/IdeScreen.js';
 import { UpdateScreen } from './screens/UpdateScreen.js';
+import { ChangelogScreen } from './screens/ChangelogScreen.js';
 import { checkForUpdate } from './services/updater.js';
 import { patchConfig } from './services/config.js';
 
@@ -103,6 +104,13 @@ export function App({ onExit, onUpdate, startupArgs }: AppProps) {
           description: 'Changer la configuration nupo : modifiez les paramètres de votre environnement.',
           screen: 'config' as Screen,
           visible: config?.initiated === true,
+        },
+        {
+          id: 'changelog',
+          label: 'Notes de mise à jour',
+          description: 'Historique des versions : nouvelles fonctionnalités et corrections.',
+          screen: 'changelog' as Screen,
+          visible: true,
         },
       ].filter(o => o.visible),
     [config],
@@ -249,6 +257,14 @@ export function App({ onExit, onUpdate, startupArgs }: AppProps) {
           leftWidth={leftWidth}
           onBack={() => setCurrentScreen('home')}
           onSaved={() => { void refresh(); setCurrentScreen('home'); }}
+        />
+      )}
+
+      {currentScreen === 'changelog' && (
+        <ChangelogScreen
+          config={config}
+          leftWidth={leftWidth}
+          onBack={() => setCurrentScreen('home')}
         />
       )}
 
