@@ -218,6 +218,8 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
   // running
   useInput((char, key) => {
     if (key.ctrl && char === 'u') { setCopyMode(true); setCopyInput(''); return; }
+    if (key.upArrow)   { setScrollOffset(p => Math.min(maxScrollRef.current, p + 3)); return; }
+    if (key.downArrow) { setScrollOffset(p => Math.max(0, p - 3)); return; }
     if (exitCode !== null) {
       if (key.escape || key.return) {
         setPhase('select_type');
@@ -231,10 +233,7 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
     }
     if (key.ctrl && char === 'c') {
       childRef.current?.kill('SIGTERM');
-      return;
     }
-    if (key.upArrow)   setScrollOffset(p => Math.min(maxScrollRef.current, p + 3));
-    if (key.downArrow) setScrollOffset(p => Math.max(0, p - 3));
   }, { isActive: phase === 'running' && !copyMode });
 
   useInput((_char, key) => {
