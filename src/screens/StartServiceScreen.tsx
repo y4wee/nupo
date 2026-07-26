@@ -293,6 +293,8 @@ export function StartServiceScreen({
       childRef.current?.kill('SIGTERM');
       return;
     }
+    if (key.upArrow)   { setScrollOffset(p => Math.min(maxScrollRef.current, p + 3)); return; }
+    if (key.downArrow) { setScrollOffset(p => Math.max(0, p - 3)); return; }
     if (char === '/') {
       setFilterMode(true);
     }
@@ -414,9 +416,9 @@ export function StartServiceScreen({
           {filterMode ? (
             <Text color={textColor} dimColor>taper pour filtrer  ·  ↵ valider  ·  Échap quitter filtre</Text>
           ) : exitCode === null ? (
-            <Text color={textColor} dimColor>scroll défiler  ·  / filtrer  ·  Ctrl+C arrêter</Text>
+            <Text color={textColor} dimColor>↑↓/scroll défiler  ·  / filtrer  ·  Ctrl+C arrêter</Text>
           ) : (
-            <Text color={textColor} dimColor>scroll défiler  ·  / filtrer  ·  Échap retour</Text>
+            <Text color={textColor} dimColor>↑↓/scroll défiler  ·  / filtrer  ·  Échap retour</Text>
           )}
         </Box>
       </Box>
