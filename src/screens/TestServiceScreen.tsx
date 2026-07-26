@@ -7,6 +7,7 @@ import { join } from 'path';
 import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
+import { copyToClipboard } from '../services/system.js';
 
 interface TestServiceScreenProps {
   config: NupoConfig;
@@ -107,6 +108,9 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
   const [logs,         setLogs]         = useState<string[]>([]);
   const [exitCode,     setExitCode]     = useState<number | null>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [copyMode,     setCopyMode]     = useState(false);
+  const [copyInput,    setCopyInput]    = useState('');
+  const [copyResult,   setCopyResult]   = useState<'ok' | 'failed' | null>(null);
 
   const childRef    = useRef<ChildProcess | null>(null);
   const mountedRef  = useRef(true);
@@ -114,6 +118,12 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
 
   const logBoxHeight = Math.max(5, rows - 12);
   const visibleLines = Math.max(3, logBoxHeight - 2);
+
+  useEffect(() => {
+    if (!copyResult) return;
+    const t = setTimeout(() => setCopyResult(null), 2000);
+    return () => clearTimeout(t);
+  }, [copyResult]);
 
   useEffect(() => () => {
     mountedRef.current = false;
@@ -207,6 +217,7 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
 
   // running
   useInput((char, key) => {
+    if (key.ctrl && char === 'u') { setCopyMode(true); setCopyInput(''); return; }
     if (exitCode !== null) {
       if (key.escape || key.return) {
         setPhase('select_type');
@@ -224,7 +235,11 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
     }
     if (key.upArrow)   setScrollOffset(p => Math.min(maxScrollRef.current, p + 3));
     if (key.downArrow) setScrollOffset(p => Math.max(0, p - 3));
-  }, { isActive: phase === 'running' });
+  }, { isActive: phase === 'running' && !copyMode });
+
+  useInput((_char, key) => {
+    if (key.escape) { setCopyMode(false); setCopyInput(''); }
+  }, { isActive: phase === 'running' && copyMode });
 
   // ── Log window ────────────────────────────────────────────────────────────
 
@@ -257,12 +272,40 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
         </Box>
 
         <Box>
-          {exitCode === null ? (
-            <Text color={textColor} dimColor>↑↓ scroller  ·  Ctrl+C arrêter</Text>
+          {copyMode ? (
+            <Box flexDirection="row" gap={1}>
+              <Text color="white">Copier les dernières</Text>
+              <TextInput
+                value={copyInput}
+                onChange={setCopyInput}
+                onSubmit={(val) => {
+                  const n = parseInt(val, 10);
+                  if (!isNaN(n) && n > 0) {
+                    const result = copyToClipboard(logs.slice(-n).join('\n'));
+                    setCopyResult(result);
+                  }
+                  setCopyMode(false);
+                  setCopyInput('');
+                }}
+                placeholder="N"
+              />
+              <Text color="white">ligne(s)  ·  Échap annuler</Text>
+            </Box>
+          ) : exitCode === null ? (
+            <Box flexDirection="row" gap={1}>
+              {copyResult && <Text color={copyResult === 'ok' ? 'green' : 'red'}>{copyResult === 'ok' ? '✓ Copié !' : '✗ Échec'}</Text>}
+              <Text color={textColor} dimColor>↑↓ scroller  ·  Ctrl+U copier  ·  Ctrl+C arrêter</Text>
+            </Box>
           ) : exitCode === 0 ? (
-            <Text color="green">✓ Tests terminés (code 0)  ·  ↵/Échap retour</Text>
+            <Box flexDirection="row" gap={1}>
+              {copyResult && <Text color={copyResult === 'ok' ? 'green' : 'red'}>{copyResult === 'ok' ? '✓ Copié !' : '✗ Échec'}</Text>}
+              <Text color="green">✓ Tests terminés (code 0)  ·  Ctrl+U copier  ·  ↵/Échap retour</Text>
+            </Box>
           ) : (
-            <Text color="red">✗ Tests échoués (code {exitCode})  ·  ↵/Échap retour</Text>
+            <Box flexDirection="row" gap={1}>
+              {copyResult && <Text color={copyResult === 'ok' ? 'green' : 'red'}>{copyResult === 'ok' ? '✓ Copié !' : '✗ Échec'}</Text>}
+              <Text color="red">✗ Tests échoués (code {exitCode})  ·  Ctrl+U copier  ·  ↵/Échap retour</Text>
+            </Box>
           )}
         </Box>
       </Box>

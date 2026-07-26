@@ -6,6 +6,7 @@ import { join } from 'path';
 import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, CliStartArgs } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
+import { copyToClipboard } from '../services/system.js';
 
 interface StartServiceScreenProps {
   config: NupoConfig;
@@ -131,12 +132,21 @@ export function StartServiceScreen({
   const [filterText,   setFilterText]   = useState('');
   const [filterMode,   setFilterMode]   = useState(false);
   const [autoStartError, setAutoStartError] = useState<string | null>(null);
+  const [copyMode,     setCopyMode]     = useState(false);
+  const [copyInput,    setCopyInput]    = useState('');
+  const [copyResult,   setCopyResult]   = useState<'ok' | 'failed' | null>(null);
 
   const childRef         = useRef<ChildProcess | null>(null);
   const mountedRef       = useRef(true);
   const activeServiceRef = useRef<OdooServiceConfig | null>(null);
   const userStoppedRef   = useRef(false);
   const maxScrollRef     = useRef(0);
+
+  useEffect(() => {
+    if (!copyResult) return;
+    const t = setTimeout(() => setCopyResult(null), 2000);
+    return () => clearTimeout(t);
+  }, [copyResult]);
 
   useEffect(() => {
     return () => {
@@ -279,6 +289,7 @@ export function StartServiceScreen({
   }, { isActive: step === 'select_dev' });
 
   useInput((char, key) => {
+    if (key.ctrl && char === 'u') { setCopyMode(true); setCopyInput(''); return; }
     if (exitCode !== null) {
       if (key.escape) {
         setStep('args_list');
@@ -298,7 +309,11 @@ export function StartServiceScreen({
     if (char === '/') {
       setFilterMode(true);
     }
-  }, { isActive: step === 'running' && !filterMode });
+  }, { isActive: step === 'running' && !filterMode && !copyMode });
+
+  useInput((_char, key) => {
+    if (key.escape) { setCopyMode(false); setCopyInput(''); }
+  }, { isActive: step === 'running' && copyMode });
 
   // Filter mode input — Escape exits filter mode
   useInput((_char, key) => {
@@ -413,12 +428,37 @@ export function StartServiceScreen({
 
         {/* Controls */}
         <Box>
-          {filterMode ? (
+          {copyMode ? (
+            <Box flexDirection="row" gap={1}>
+              <Text color="white">Copier les dernières</Text>
+              <TextInput
+                value={copyInput}
+                onChange={setCopyInput}
+                onSubmit={(val) => {
+                  const n = parseInt(val, 10);
+                  if (!isNaN(n) && n > 0) {
+                    const result = copyToClipboard(logs.slice(-n).join('\n'));
+                    setCopyResult(result);
+                  }
+                  setCopyMode(false);
+                  setCopyInput('');
+                }}
+                placeholder="N"
+              />
+              <Text color="white">ligne(s)  ·  Échap annuler</Text>
+            </Box>
+          ) : filterMode ? (
             <Text color={textColor} dimColor>taper pour filtrer  ·  ↵ valider  ·  Échap quitter filtre</Text>
           ) : exitCode === null ? (
-            <Text color={textColor} dimColor>↑↓/scroll défiler  ·  / filtrer  ·  Ctrl+C arrêter</Text>
+            <Box flexDirection="row" gap={1}>
+              {copyResult && <Text color={copyResult === 'ok' ? 'green' : 'red'}>{copyResult === 'ok' ? '✓ Copié !' : '✗ Échec'}</Text>}
+              <Text color={textColor} dimColor>↑↓/scroll  ·  / filtrer  ·  Ctrl+U copier  ·  Ctrl+C arrêter</Text>
+            </Box>
           ) : (
-            <Text color={textColor} dimColor>↑↓/scroll défiler  ·  / filtrer  ·  Échap retour</Text>
+            <Box flexDirection="row" gap={1}>
+              {copyResult && <Text color={copyResult === 'ok' ? 'green' : 'red'}>{copyResult === 'ok' ? '✓ Copié !' : '✗ Échec'}</Text>}
+              <Text color={textColor} dimColor>↑↓/scroll  ·  / filtrer  ·  Ctrl+U copier  ·  Échap retour</Text>
+            </Box>
           )}
         </Box>
       </Box>
