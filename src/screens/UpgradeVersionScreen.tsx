@@ -157,12 +157,17 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
     if (!version) return;
 
     const enterprisePath = join(version.path, 'enterprise');
+    const themesPath = join(version.path, 'themes');
     const hasEnterprise = await dirExists(enterprisePath);
+    const hasThemes = await dirExists(themesPath);
 
     const initialSteps: UpgradeStep[] = [
       { id: 'update_community', label: 'Mise à jour community', status: 'pending' },
       ...(hasEnterprise
         ? [{ id: 'update_enterprise' as const, label: 'Mise à jour enterprise', status: 'pending' as StepStatus }]
+        : []),
+      ...(hasThemes
+        ? [{ id: 'update_themes' as const, label: 'Mise à jour themes', status: 'pending' as StepStatus }]
         : []),
     ];
 
@@ -188,7 +193,9 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
 
       const repoPath = step.id === 'update_community'
         ? join(version.path, 'community')
-        : join(version.path, 'enterprise');
+        : step.id === 'update_enterprise'
+          ? join(version.path, 'enterprise')
+          : join(version.path, 'themes');
 
       const r = await updateRepo(repoPath, version.branch, progress => {
         setFetchProgress(progress);

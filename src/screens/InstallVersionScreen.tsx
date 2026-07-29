@@ -9,7 +9,7 @@ import {
 import {
   GitProgress,
   checkBranch, cloneRepo,
-  ODOO_COMMUNITY_URL, ODOO_ENTERPRISE_URL,
+  ODOO_COMMUNITY_URL, ODOO_ENTERPRISE_URL, ODOO_DESIGN_THEMES_URL,
 } from '../services/git.js';
 import { createVenv, installRequirements, findPythonBinary, getPythonVersion } from '../services/python.js';
 import { readConfig, writeConfig } from '../services/config.js';
@@ -35,6 +35,7 @@ const STEP_DEFS: { id: InstallStepId; label: string }[] = [
   { id: 'create_dir',           label: 'Création du dossier' },
   { id: 'clone_community',      label: 'Téléchargement Odoo community' },
   { id: 'clone_enterprise',     label: 'Téléchargement Odoo enterprise' },
+  { id: 'clone_themes',         label: 'Téléchargement Odoo design-themes' },
   { id: 'create_venv',          label: 'Création de l\'environnement virtuel Python' },
   { id: 'install_requirements', label: 'Installation des dépendances Python' },
   { id: 'create_extras',        label: 'Création dossiers custom, config et filestore' },
@@ -441,6 +442,34 @@ export function InstallVersionScreen({
     }
   }, []);
 
+  const runCloneThemes = useCallback(async () => {
+    dispatchRef.current({ type: 'SET_STATUS', id: 'clone_themes', status: 'running' });
+    setCloneProgress(null);
+    const dest = join(versionPathRef.current, 'themes');
+    if (await dirExists(dest)) {
+      dispatchRef.current({ type: 'SET_STATUS', id: 'clone_themes', status: 'success', errorMessage: `${dest} (déjà présent)` });
+      void saveProgressRef.current('clone_themes');
+      setCurrentStepIndex(8);
+      return;
+    }
+    let lastUpdate = 0;
+    const r = await cloneRepo(ODOO_DESIGN_THEMES_URL, dest, branchNameRef.current, progress => {
+      const now = Date.now();
+      if (now - lastUpdate >= 80) {
+        lastUpdate = now;
+        setCloneProgress(progress);
+      }
+    });
+    setCloneProgress(null);
+    if (r.ok) {
+      dispatchRef.current({ type: 'SET_STATUS', id: 'clone_themes', status: 'success', errorMessage: dest });
+      void saveProgressRef.current('clone_themes');
+    } else {
+      dispatchRef.current({ type: 'SET_STATUS', id: 'clone_themes', status: 'success', errorMessage: 'non disponible (ignoré)' });
+    }
+    setCurrentStepIndex(8);
+  }, []);
+
   const runCreateVenv = useCallback(async () => {
     dispatchRef.current({ type: 'SET_STATUS', id: 'create_venv', status: 'running' });
     const venvPath = join(versionPathRef.current, '.venv');
@@ -448,7 +477,7 @@ export function InstallVersionScreen({
     if (r.ok) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'create_venv', status: 'success', errorMessage: venvPath });
       void saveProgressRef.current('create_venv');
-      setCurrentStepIndex(8);
+      setCurrentStepIndex(9);
     } else {
       dispatchRef.current({ type: 'SET_STATUS', id: 'create_venv', status: 'error', errorMessage: r.error });
     }
@@ -465,7 +494,7 @@ export function InstallVersionScreen({
     if (r.ok) {
       dispatchRef.current({ type: 'SET_STATUS', id: 'install_requirements', status: 'success' });
       void saveProgressRef.current('install_requirements');
-      setCurrentStepIndex(9);
+      setCurrentStepIndex(10);
     } else {
       dispatchRef.current({ type: 'SET_STATUS', id: 'install_requirements', status: 'error', errorMessage: r.error });
     }
@@ -515,18 +544,19 @@ export function InstallVersionScreen({
       case 4: void runCreateDir(); break;
       case 5: void runCloneCommunity(); break;
       case 6: void runCloneEnterprise(); break;
-      case 7: void runCreateVenv(); break;
-      case 8: void runInstallRequirements(); break;
-      case 9: void runCreateExtras(); break;
+      case 7: void runCloneThemes(); break;
+      case 8: void runCreateVenv(); break;
+      case 9: void runInstallRequirements(); break;
+      case 10: void runCreateExtras(); break;
     }
     // retryCount in deps: re-triggers the current step when user retries
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStepIndex, retryCount, runCheckCommunity, runCheckEnterprise, runCheckPythonVersion, runCreateDir, runCloneCommunity, runCloneEnterprise, runCreateVenv, runInstallRequirements, runCreateExtras]);
+  }, [currentStepIndex, retryCount, runCheckCommunity, runCheckEnterprise, runCheckPythonVersion, runCreateDir, runCloneCommunity, runCloneEnterprise, runCloneThemes, runCreateVenv, runInstallRequirements, runCreateExtras]);
 
-  const isCloneStep = currentStepIndex === 5 || currentStepIndex === 6;
-  const isPipStep = currentStepIndex === 8;
+  const isCloneStep = currentStepIndex === 5 || currentStepIndex === 6 || currentStepIndex === 7;
+  const isPipStep = currentStepIndex === 9;
   const errorStep = steps.find(s => s.status === 'error');
-  const cloneLabel = currentStepIndex === 5 ? 'community' : 'enterprise';
+  const cloneLabel = currentStepIndex === 5 ? 'community' : currentStepIndex === 6 ? 'enterprise' : 'themes';
 
   return (
     <Box flexDirection="column" flexGrow={1}>

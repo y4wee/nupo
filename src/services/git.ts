@@ -1,8 +1,9 @@
 import { execFile, spawn } from 'node:child_process';
 
 export const ODOO_COMMUNITY_URL = 'https://github.com/odoo/odoo.git';
-// Enterprise is a private repo: use SSH so the user's key is used automatically.
+// Enterprise and design-themes are private repos: use SSH so the user's key is used automatically.
 export const ODOO_ENTERPRISE_URL = 'git@github.com:odoo/enterprise.git';
+export const ODOO_DESIGN_THEMES_URL = 'git@github.com:odoo/design-themes.git';
 
 export interface GitResult {
   ok: boolean;
