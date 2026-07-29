@@ -13,6 +13,13 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.43',
+    date: '2026-07-26',
+    entries: [
+      { type: 'feat', label: 'Installation et mise à jour du repo design-themes (dossier themes/)' },
+    ],
+  },
+  {
     version: '0.2.41',
     date: '2026-07-26',
     entries: [
