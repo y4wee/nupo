@@ -27,6 +27,7 @@ export function DropScreen({ config, leftWidth, onBack }: DropScreenProps) {
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<FilestoreEntry[]>([]);
   const [selected, setSelected] = useState(0);
+  const [search, setSearch] = useState('');
   const [confirmSel, setConfirmSel] = useState(1); // 0=Oui 1=Non
   const [dropPsqlOk, setDropPsqlOk] = useState<boolean | null>(null);
   const [dropFsOk, setDropFsOk] = useState<boolean | null>(null);
@@ -46,20 +47,26 @@ export function DropScreen({ config, leftWidth, onBack }: DropScreenProps) {
     loadEntries();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const currentEntry = entries[selected];
+  const filteredEntries = search
+    ? entries.filter(e => e.dbName.toLowerCase().includes(search.toLowerCase()))
+    : entries;
+  const currentEntry = filteredEntries[selected];
 
   // ── select ────────────────────────────────────────────────────────────────
 
   useInput(
-    (_char, key) => {
-      if (key.escape) { onBack(); return; }
-      if (loading || entries.length === 0) return;
-      if (key.upArrow) setSelected(p => Math.max(0, p - 1));
-      if (key.downArrow) setSelected(p => Math.min(entries.length - 1, p + 1));
-      if (key.return && currentEntry) {
-        setConfirmSel(1);
-        setPhase('confirm');
+    (char, key) => {
+      if (key.escape) {
+        if (search) { setSearch(''); setSelected(0); return; }
+        onBack();
+        return;
       }
+      if (loading) return;
+      if (key.upArrow) { setSelected(p => Math.max(0, p - 1)); return; }
+      if (key.downArrow) { setSelected(p => Math.min(filteredEntries.length - 1, p + 1)); return; }
+      if (key.return && currentEntry) { setConfirmSel(1); setPhase('confirm'); return; }
+      if (key.backspace || key.delete) { setSearch(p => p.slice(0, -1)); setSelected(0); return; }
+      if (char && !key.ctrl && !key.meta && char >= ' ') { setSearch(p => p + char); setSelected(0); }
     },
     { isActive: phase === 'select' },
   );
@@ -142,31 +149,44 @@ export function DropScreen({ config, leftWidth, onBack }: DropScreenProps) {
               </>
             ) : (
               <>
-                <Text color={textColor} dimColor>Sélectionnez une base à supprimer :</Text>
-                <Box flexDirection="column" gap={0}>
-                  {entries.map((e, i) => {
-                    const isSel = i === selected;
-                    return (
-                      <Box key={`${e.versionBranch}/${e.dbName}`} flexDirection="row">
-                        <Text
-                          color={isSel ? 'black' : 'white'}
-                          backgroundColor={isSel ? cursorColor : undefined}
-                          bold={isSel}
-                        >
-                          {` ${isSel ? '▶' : ' '} ${e.dbName}`}
-                        </Text>
-                        <Text
-                          color={isSel ? 'black' : textColor}
-                          backgroundColor={isSel ? cursorColor : undefined}
-                          dimColor={!isSel}
-                        >
-                          {`  [${e.versionBranch}]`}
-                        </Text>
-                      </Box>
-                    );
-                  })}
+                <Box borderStyle="round" borderColor={search ? 'cyan' : 'gray'} paddingX={1} flexDirection="row" gap={1}>
+                  <Text color={textColor} dimColor>{'🔍'}</Text>
+                  {search
+                    ? <Text color="white">{search}</Text>
+                    : <Text color={textColor} dimColor>Rechercher…</Text>
+                  }
                 </Box>
-                <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
+                {filteredEntries.length === 0 ? (
+                  <Text color={textColor} dimColor>{`  Aucune base correspondant à "${search}"`}</Text>
+                ) : (
+                  <Box flexDirection="column" gap={0}>
+                    {filteredEntries.map((e, i) => {
+                      const isSel = i === selected;
+                      return (
+                        <Box key={`${e.versionBranch}/${e.dbName}`} flexDirection="row">
+                          <Text
+                            color={isSel ? 'black' : 'white'}
+                            backgroundColor={isSel ? cursorColor : undefined}
+                            bold={isSel}
+                          >
+                            {` ${isSel ? '▶' : ' '} ${e.dbName}`}
+                          </Text>
+                          <Text
+                            color={isSel ? 'black' : textColor}
+                            backgroundColor={isSel ? cursorColor : undefined}
+                            dimColor={!isSel}
+                          >
+                            {`  [${e.versionBranch}]`}
+                          </Text>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+                <Text color={textColor} dimColor>
+                  {'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap '}
+                  {search ? 'effacer filtre' : 'retour'}
+                </Text>
               </>
             )}
           </Box>

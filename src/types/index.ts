@@ -83,6 +83,7 @@ export interface CliStartArgs {
   module?: string;
   install?: string;
   stopAfterInit: boolean;
+  noHttp: boolean;
   shell: boolean;
 }
 

@@ -5,6 +5,7 @@ import { App } from './App.js';
 import { CliStartArgs } from './types/index.js';
 import { configExists, readConfig, patchConfig } from './services/config.js';
 import { setupVsCode } from './services/ide.js';
+import { buildLaunchCmd } from './services/odoo.js';
 import { spawn } from 'node:child_process';
 
 // ── Help ─────────────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ OPTIONS DE START
   -u <module>                   Module à mettre à jour (--update)
   -i <module>                   Module à installer (--init)
   --stop-after-init             Arrête Odoo après l'initialisation
+  --no-http                     Désactive le serveur HTTP
   --shell                       Lance en mode shell interactif
 
 EXEMPLES
@@ -35,6 +37,7 @@ EXEMPLES
   nupo start mon_service -d ma_base -u mon_module
   nupo start mon_service -d ma_base -i mon_module --stop-after-init
   nupo start mon_service --shell
+  nupo start mon_service --no-http
   nupo code 18.0
   nupo code 17.0
 
@@ -47,7 +50,7 @@ function parseCliArgs(): CliStartArgs | null {
   const args = rawArgs;
   if (args[0] !== 'start' || !args[1]) return null;
 
-  const result: CliStartArgs = { serviceName: args[1]!, stopAfterInit: false, shell: false };
+  const result: CliStartArgs = { serviceName: args[1]!, stopAfterInit: false, noHttp: false, shell: false };
 
   for (let i = 2; i < args.length; i++) {
     switch (args[i]) {
@@ -55,7 +58,8 @@ function parseCliArgs(): CliStartArgs | null {
       case '-u': if (args[i + 1]) result.module  = args[++i]; break;
       case '-i': if (args[i + 1]) result.install = args[++i]; break;
       case '--stop-after-init': result.stopAfterInit = true; break;
-      case '--shell':           result.shell         = true; break;
+      case '--no-http':         result.noHttp        = true; break;
+      case '--shell':           result.shell          = true; break;
     }
   }
 
@@ -107,7 +111,7 @@ if (rawArgs[0] === 'code') {
   process.exit(ok ? 0 : 1);
 }
 
-// ── Pre-flight validation (before alternate screen) ───────────────────────────
+// ── nupo start — spawn direct (pas de TUI) ───────────────────────────────────
 if (startupArgs) {
   const exists = await configExists();
   if (!exists) {
@@ -120,7 +124,8 @@ if (startupArgs) {
     process.exit(1);
   }
   const services = cfg.odoo_services ?? {};
-  if (!services[startupArgs.serviceName]) {
+  const service = services[startupArgs.serviceName];
+  if (!service) {
     const names = Object.keys(services);
     const list  = names.length > 0 ? names.join(', ') : 'aucun';
     process.stderr.write(
@@ -128,62 +133,75 @@ if (startupArgs) {
     );
     process.exit(1);
   }
-}
 
-// ── Alternate screen buffer ───────────────────────────────────────────────────
-// Enter alternate screen + hide cursor before rendering anything
-process.stdout.write('\x1B[?1049h\x1B[?25l');
-
-let cleanedUp = false;
-
-function cleanup() {
-  if (cleanedUp) return;
-  cleanedUp = true;
-  // Restore main screen buffer + show cursor
-  process.stdout.write('\x1B[?1049l\x1B[?25h');
-}
-
-async function handleUpdate() {
-  instance.clear();
-  instance.unmount();
-  cleanup();
-  await patchConfig({ to_update: false });
-  // npm install already done by UpdateScreen — just restart
-  const child = spawn(process.argv[0]!, process.argv.slice(1), {
-    stdio: 'inherit',
-    env: process.env,
+  const { cmd, args } = buildLaunchCmd(service, {
+    shell:         startupArgs.shell,
+    db:            startupArgs.db      ?? '',
+    module:        startupArgs.module  ?? '',
+    install:       startupArgs.install ?? '',
+    stopAfterInit: startupArgs.stopAfterInit,
+    noHttp:        startupArgs.noHttp,
+    devFeatures:   [],
   });
-  child.on('exit', code => process.exit(code ?? 0));
+
+  const child = spawn(cmd, args, { stdio: 'inherit' });
+  child.on('close', code => process.exit(code ?? 0));
+} else {
+  // ── Alternate screen buffer ─────────────────────────────────────────────────
+  // Enter alternate screen + hide cursor before rendering anything
+  process.stdout.write('\x1B[?1049h\x1B[?25l');
+
+  let cleanedUp = false;
+
+  function cleanup() {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    // Restore main screen buffer + show cursor
+    process.stdout.write('\x1B[?1049l\x1B[?25h');
+  }
+
+  async function handleUpdate() {
+    instance.clear();
+    instance.unmount();
+    cleanup();
+    await patchConfig({ to_update: false });
+    // npm install already done by UpdateScreen — just restart
+    const child = spawn(process.argv[0]!, process.argv.slice(1), {
+      stdio: 'inherit',
+      env: process.env,
+    });
+    child.on('exit', code => process.exit(code ?? 0));
+  }
+
+  // Guarantee cleanup on every possible exit path
+  process.on('exit',              cleanup);
+  process.on('SIGTERM',           () => { cleanup(); process.exit(0); });
+  process.on('SIGINT',            () => { cleanup(); process.exit(0); });
+  process.on('uncaughtException', err => {
+    cleanup();
+    process.stderr.write(`\nnupo: erreur non gérée : ${err.message}\n${err.stack ?? ''}\n`);
+    process.exit(1);
+  });
+  process.on('unhandledRejection', reason => {
+    cleanup();
+    process.stderr.write(`\nnupo: promesse rejetée : ${String(reason)}\n`);
+    process.exit(1);
+  });
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+  let instance: ReturnType<typeof render>;
+
+  function handleExit() {
+    instance.clear();
+    instance.unmount();
+    cleanup();
+  }
+
+  instance = render(<App onExit={handleExit} onUpdate={() => { void handleUpdate(); }} />, {
+    exitOnCtrlC: false,
+  });
+
+  process.stdout.on('resize', () => {
+    process.stdout.write('\x1B[2J\x1B[H');
+  });
 }
-
-// Guarantee cleanup on every possible exit path
-process.on('exit',              cleanup);
-process.on('SIGTERM',           () => { cleanup(); process.exit(0); });
-process.on('SIGINT',            () => { cleanup(); process.exit(0); });
-process.on('uncaughtException', err => {
-  cleanup();
-  process.stderr.write(`\nnupo: erreur non gérée : ${err.message}\n${err.stack ?? ''}\n`);
-  process.exit(1);
-});
-process.on('unhandledRejection', reason => {
-  cleanup();
-  process.stderr.write(`\nnupo: promesse rejetée : ${String(reason)}\n`);
-  process.exit(1);
-});
-
-// ── Render ────────────────────────────────────────────────────────────────────
-let instance: ReturnType<typeof render>;
-
-function handleExit() {
-  instance.clear();
-  instance.unmount();
-  cleanup();
-}
-
-instance = render(<App onExit={handleExit} onUpdate={() => { void handleUpdate(); }} startupArgs={startupArgs ?? undefined} />, {
-  exitOnCtrlC: false,
-});
-
-process.stdout.on('resize', () => {
-  process.stdout.write('\x1B[2J\x1B[H');
-});

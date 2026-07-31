@@ -8,6 +8,7 @@ import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getT
 import { LeftPanel } from '../components/LeftPanel.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { copyToClipboard } from '../services/system.js';
+import { buildAddonsPaths } from '../services/odoo.js';
 
 interface TestServiceScreenProps {
   config: NupoConfig;
@@ -47,12 +48,6 @@ function LogLine({ line, idx }: { line: string; idx: number }): React.ReactEleme
   );
 }
 
-function buildAddonsPaths(service: OdooServiceConfig): string[] {
-  const paths = [join(service.versionPath, 'community', 'addons')];
-  if (service.useEnterprise) paths.push(join(service.versionPath, 'enterprise'));
-  for (const f of service.customFolders) paths.push(join(service.versionPath, 'custom', f));
-  return paths;
-}
 
 async function getConfAddonsPaths(confPath: string): Promise<string[]> {
   try {
@@ -136,7 +131,7 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
     const testTag  = type === 'module' ? `/${value}` : value;
     const args     = [odooBin, '-c', service.confPath, '--addons-path', buildAddonsPaths(service).join(',')];
     if (db) args.push('-d', db);
-    args.push('--test-tags', testTag, '--stop-after-init');
+    args.push('--test-tags', testTag, '--stop-after-init', '--no-http');
 
     setLogs([]);
     setExitCode(null);

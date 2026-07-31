@@ -13,6 +13,16 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.44',
+    date: '2026-07-31',
+    entries: [
+      { type: 'feat', label: 'nupo start : lancement direct dans le terminal (sans TUI), avec --no-http et --shell fonctionnels' },
+      { type: 'feat', label: 'Ajout de themes/ dans les addons-path quand useEnterprise est actif' },
+      { type: 'feat', label: 'Barre de recherche dans "Désinstaller une base"' },
+      { type: 'feat', label: 'Option --no-http dans le lancement de service (TUI et CLI)' },
+    ],
+  },
+  {
     version: '0.2.43',
     date: '2026-07-26',
     entries: [

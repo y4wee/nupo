@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
-import { join } from 'path';
 import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, CliStartArgs } from '../types/index.js';
+import { buildAddonsPaths, buildLaunchCmd, LaunchOpts } from '../services/odoo.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { copyToClipboard } from '../services/system.js';
@@ -26,6 +26,7 @@ const ARGS_ITEMS = [
   { key: 'module'          as const, label: '-u <module>',       type: 'input'  as const },
   { key: 'install'         as const, label: '-i <module>',       type: 'input'  as const },
   { key: 'stop_after_init' as const, label: '--stop-after-init', type: 'toggle' as const },
+  { key: 'no_http'         as const, label: '--no-http',         type: 'toggle' as const },
   { key: 'dev'             as const, label: '--dev',             type: 'submenu' as const },
   { key: 'launch'          as const, label: 'Lancer →',          type: 'action' as const },
 ];
@@ -47,32 +48,6 @@ function httpPortForBranch(branch: string): number {
   return m ? 8000 + parseInt(m[1]!, 10) : 8069;
 }
 
-function buildAddonsPaths(service: OdooServiceConfig): string[] {
-  const paths = [join(service.versionPath, 'community', 'addons')];
-  if (service.useEnterprise) paths.push(join(service.versionPath, 'enterprise'));
-  for (const f of service.customFolders) paths.push(join(service.versionPath, 'custom', f));
-  return paths;
-}
-
-function buildLaunchCmd(
-  service: OdooServiceConfig,
-  opts: { shell: boolean; db: string; module: string; install: string; stopAfterInit: boolean; devFeatures: string[] },
-): { cmd: string; args: string[] } {
-  const python  = join(service.versionPath, '.venv', 'bin', 'python3');
-  const odooBin = join(service.versionPath, 'community', 'odoo-bin');
-  const args: string[] = [odooBin];
-
-  if (opts.shell) args.push('shell');
-  args.push('-c', service.confPath);
-  args.push('--addons-path', buildAddonsPaths(service).join(','));
-  if (opts.db)            args.push('-d', opts.db);
-  if (opts.module)        args.push('-u', opts.module);
-  if (opts.install)       args.push('-i', opts.install);
-  if (opts.stopAfterInit) args.push('--stop-after-init');
-  if (opts.devFeatures.length > 0) args.push('--dev', opts.devFeatures.join(','));
-
-  return { cmd: python, args };
-}
 
 const LEVEL_COLORS: Record<string, string> = {
   INFO:     'green',
@@ -123,6 +98,7 @@ export function StartServiceScreen({
   const [moduleName,    setModuleName]    = useState('');
   const [installName,   setInstallName]   = useState('');
   const [stopAfterInit, setStopAfterInit] = useState(false);
+  const [noHttp,        setNoHttp]        = useState(false);
   const [devFeatures,   setDevFeatures]   = useState<string[]>([]);
   const [inputValue,    setInputValue]    = useState('');
 
@@ -168,11 +144,11 @@ export function StartServiceScreen({
 
   const launchService = (
     svc?: OdooServiceConfig,
-    overrideOpts?: { shell: boolean; db: string; module: string; install: string; stopAfterInit: boolean; devFeatures: string[] },
+    overrideOpts?: LaunchOpts,
   ) => {
     const target = svc ?? service;
     if (!target) return;
-    const opts = overrideOpts ?? { shell: useShell, db: dbName, module: moduleName, install: installName, stopAfterInit, devFeatures };
+    const opts = overrideOpts ?? { shell: useShell, db: dbName, module: moduleName, install: installName, stopAfterInit, noHttp, devFeatures };
 
     activeServiceRef.current = target;
     setLogs([]);
@@ -225,6 +201,7 @@ export function StartServiceScreen({
       module:        autoStart.module        ?? '',
       install:       autoStart.install       ?? '',
       stopAfterInit: autoStart.stopAfterInit,
+      noHttp:        false,
       devFeatures:   [],
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -249,6 +226,7 @@ export function StartServiceScreen({
       switch (item.key) {
         case 'shell':           setUseShell(p => !p); break;
         case 'stop_after_init': setStopAfterInit(p => !p); break;
+        case 'no_http':         setNoHttp(p => !p); break;
         case 'db':      setInputValue(dbName);      setStep('input_db');      break;
         case 'module':  setInputValue(moduleName);  setStep('input_module');  break;
         case 'install': setInputValue(installName); setStep('input_install'); break;
@@ -375,6 +353,7 @@ export function StartServiceScreen({
     module:          !!moduleName,
     install:         !!installName,
     stop_after_init: stopAfterInit,
+    no_http:         noHttp,
     dev:             devFeatures.length > 0,
   };
   const argDisplay: Record<string, string> = {
