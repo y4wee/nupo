@@ -13,6 +13,14 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.47',
+    date: '2026-08-05',
+    entries: [
+      { type: 'fix', label: 'Création de service : le fichier .conf n\'est plus écrasé s\'il existe déjà' },
+      { type: 'feat', label: 'Migration : copie automatique du filestore vers la base migrée après une migration réussie' },
+    ],
+  },
+  {
     version: '0.2.46',
     date: '2026-08-05',
     entries: [

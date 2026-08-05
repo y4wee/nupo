@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
+import { join } from 'node:path';
 import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
-import { listDatabases, spawnMigration } from '../services/database.js';
+import { listDatabases, spawnMigration, copyFilestore } from '../services/database.js';
 
 interface MigrationScreenProps {
   config: NupoConfig;
@@ -19,6 +20,9 @@ type MigrationPhase =
   | 'enter_code'
   | 'confirm'
   | 'running'
+  | 'filestore_prompt'
+  | 'filestore_select'
+  | 'filestore_copying'
   | 'done'
   | 'error';
 
@@ -69,6 +73,13 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
   const [logScroll, setLogScroll] = useState(0);
   const [hasPrompt, setHasPrompt] = useState(false);
   const stdinWriterRef = useRef<((s: string) => void) | null>(null);
+
+  // Filestore copy
+  const [filestoreCandidates, setFilestoreCandidates] = useState<string[]>([]);
+  const [filestoreSel, setFilestoreSel] = useState(0);
+  const [selectedFilestoreDb, setSelectedFilestoreDb] = useState('');
+  const [filestoreCopyOk, setFilestoreCopyOk] = useState<boolean | null>(null);
+  const [filestoreCopyError, setFilestoreCopyError] = useState('');
 
   // Load PostgreSQL databases
   useEffect(() => {
@@ -185,6 +196,28 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     if (key.return) { write('\n'); setHasPrompt(false); }
   }, { isActive: phase === 'running' });
 
+  // ── filestore_prompt ──────────────────────────────────────────────────────
+
+  useInput((char, key) => {
+    if (key.escape || char === 'n' || char === 'N') { setPhase('done'); return; }
+    if (key.return || char === 'o' || char === 'O' || char === 'y' || char === 'Y') {
+      void runFilestoreCopy(selectedFilestoreDb);
+    }
+  }, { isActive: phase === 'filestore_prompt' });
+
+  // ── filestore_select ──────────────────────────────────────────────────────
+
+  useInput((_char, key) => {
+    if (key.escape) { setPhase('done'); return; }
+    if (key.upArrow) setFilestoreSel(p => Math.max(0, p - 1));
+    if (key.downArrow) setFilestoreSel(p => Math.min(filestoreCandidates.length - 1, p + 1));
+    if (key.return) {
+      const db = filestoreCandidates[filestoreSel];
+      if (!db) return;
+      void runFilestoreCopy(db);
+    }
+  }, { isActive: phase === 'filestore_select' });
+
   // ── done / error ──────────────────────────────────────────────────────────
 
   useInput((_char, key) => {
@@ -195,6 +228,30 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
 
   // ── runner ────────────────────────────────────────────────────────────────
 
+  const runFilestoreCopy = useCallback(async (newDbName: string) => {
+    setSelectedFilestoreDb(newDbName);
+    setPhase('filestore_copying');
+    const versions = Object.values(config.odoo_versions ?? {});
+    const srcVersion = versions.find(v => v.branch === selectedSourceVersion);
+    const dstVersion = versions.find(v => v.branch === selectedVersion);
+    if (!srcVersion || !dstVersion) {
+      setFilestoreCopyOk(false);
+      setFilestoreCopyError(
+        !srcVersion
+          ? `Version source Odoo ${selectedSourceVersion} non installée dans nupo.`
+          : `Version cible Odoo ${selectedVersion} non installée dans nupo.`,
+      );
+      setPhase('done');
+      return;
+    }
+    const src = join(srcVersion.path, 'datas', 'filestore', selectedDbName);
+    const dst = join(dstVersion.path, 'datas', 'filestore', newDbName);
+    const result = await copyFilestore(src, dst);
+    setFilestoreCopyOk(result.ok);
+    setFilestoreCopyError(result.error ?? '');
+    setPhase('done');
+  }, [config.odoo_versions, selectedSourceVersion, selectedVersion, selectedDbName]);
+
   const runMigration = useCallback(async () => {
     if (!selectedDbName) return;
     setLines([]);
@@ -202,7 +259,13 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     setErrorMsg('');
     setLogScroll(0);
     setHasPrompt(false);
+    setFilestoreCopyOk(null);
+    setFilestoreCopyError('');
+    setFilestoreCandidates([]);
+    setSelectedFilestoreDb('');
     stdinWriterRef.current = null;
+
+    const snapshot = await listDatabases();
     setPhase('running');
 
     const result = await spawnMigration(
@@ -220,7 +283,27 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     stdinWriterRef.current = null;
     setMigrationOk(result.ok);
     setErrorMsg(result.error ?? '');
-    setPhase(result.ok ? 'done' : 'error');
+
+    if (result.ok) {
+      const afterDbs = await listDatabases();
+      const candidates = afterDbs.filter(
+        db => db.startsWith(selectedDbName) && db !== selectedDbName && !snapshot.includes(db),
+      );
+      if (candidates.length === 1) {
+        setFilestoreCandidates(candidates);
+        setSelectedFilestoreDb(candidates[0]!);
+        setFilestoreSel(0);
+        setPhase('filestore_prompt');
+      } else if (candidates.length > 1) {
+        setFilestoreCandidates(candidates);
+        setFilestoreSel(0);
+        setPhase('filestore_select');
+      } else {
+        setPhase('done');
+      }
+    } else {
+      setPhase('error');
+    }
   }, [selectedDbName, selectedVersion, selectedType, enterpriseCode]);
 
   // ── render ────────────────────────────────────────────────────────────────
@@ -445,6 +528,52 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
           </Box>
         )}
 
+        {/* filestore_prompt */}
+        {phase === 'filestore_prompt' && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Text color="green" bold>✓ Migration terminée avec succès.</Text>
+            <Text color={textColor} dimColor>Base migrée détectée :</Text>
+            <Text color="white" bold>{`  ${selectedFilestoreDb}`}</Text>
+            <Text color="white">
+              {'Copier le filestore de '}
+              <Text color={primaryColor} bold>{selectedDbName}</Text>
+              {' vers cette base ?'}
+            </Text>
+            <Text color={textColor} dimColor>O/↵ copier  ·  N/Échap ignorer</Text>
+          </Box>
+        )}
+
+        {/* filestore_select */}
+        {phase === 'filestore_select' && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Text color="green" bold>✓ Migration terminée avec succès.</Text>
+            <Text color={textColor} dimColor>
+              {'Plusieurs bases détectées — sélectionnez celle vers laquelle copier le filestore de '}
+              <Text color="white">{selectedDbName}</Text>
+              {' :'}
+            </Text>
+            <Box flexDirection="column" gap={0}>
+              {filestoreCandidates.map((db, i) => {
+                const isSel = i === filestoreSel;
+                return (
+                  <Text key={db} color={isSel ? 'black' : 'white'} backgroundColor={isSel ? cursorColor : undefined} bold={isSel}>
+                    {` ${isSel ? '▶' : ' '} ${db}`}
+                  </Text>
+                );
+              })}
+            </Box>
+            <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ copier  ·  Échap ignorer</Text>
+          </Box>
+        )}
+
+        {/* filestore_copying */}
+        {phase === 'filestore_copying' && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Text color="green" bold>✓ Migration terminée.</Text>
+            <Text color={textColor} dimColor>{'⟳ Copie du filestore en cours…'}</Text>
+          </Box>
+        )}
+
         {/* done / error */}
         {(phase === 'done' || phase === 'error') && (() => {
           const total = lines.length;
@@ -456,11 +585,25 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
           return (
             <Box flexDirection="column" gap={1} marginTop={1}>
               {phase === 'done' ? (
-                <Text color="green" bold>
-                  {'✓ Migration de '}
-                  <Text bold>{selectedDbName}</Text>
-                  {` vers Odoo ${selectedVersion} terminée avec succès.`}
-                </Text>
+                <Box flexDirection="column" gap={0}>
+                  <Text color="green" bold>
+                    {'✓ Migration de '}
+                    <Text bold>{selectedDbName}</Text>
+                    {` vers Odoo ${selectedVersion} terminée avec succès.`}
+                  </Text>
+                  {filestoreCopyOk === true && (
+                    <Text color="green">
+                      {'  ✓ Filestore copié vers '}
+                      <Text bold>{selectedFilestoreDb}</Text>
+                      {'.'}
+                    </Text>
+                  )}
+                  {filestoreCopyOk === false && (
+                    <Text color="yellow">
+                      {'  ⚠ Copie du filestore échouée : '}{filestoreCopyError}
+                    </Text>
+                  )}
+                </Box>
               ) : (
                 <>
                   <Text color="red" bold>✗ La migration a échoué.</Text>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
-import { readdir, stat, mkdir, writeFile, unlink } from 'fs/promises';
+import { readdir, stat, mkdir, writeFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { NupoConfig, OdooVersion, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, sortedOdooVersions } from '../types/index.js';
 import { readConfig, writeConfig, readBaseConf } from '../services/config.js';
@@ -146,7 +146,10 @@ export function ConfigureServiceScreen({
       confPath,
     };
     await mkdir(join(opts.version.path, 'config'), { recursive: true });
-    await writeFile(confPath, await generateConfContent(opts.version.branch, opts.version.path), 'utf-8');
+    const confExists = await access(confPath).then(() => true).catch(() => false);
+    if (!confExists) {
+      await writeFile(confPath, await generateConfContent(opts.version.branch, opts.version.path), 'utf-8');
+    }
 
     const current = await readConfig();
     const services = { ...(current.odoo_services ?? {}) };
