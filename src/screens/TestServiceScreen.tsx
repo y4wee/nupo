@@ -60,6 +60,15 @@ async function getConfAddonsPaths(confPath: string): Promise<string[]> {
   }
 }
 
+async function getConfHttpPort(confPath: string): Promise<number | null> {
+  try {
+    const content = await readFile(confPath, 'utf8');
+    const match = content.match(/^http_port\s*=\s*(\d+)$/m);
+    if (match) return parseInt(match[1]!, 10);
+  } catch {}
+  return null;
+}
+
 async function checkModuleExists(
   service: OdooServiceConfig,
   moduleName: string,
@@ -125,13 +134,19 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
     childRef.current?.kill('SIGTERM');
   }, []);
 
-  const launchTest = (db: string, type: TestType, value: string) => {
+  const launchTest = async (db: string, type: TestType, value: string) => {
     const python   = join(service.versionPath, '.venv', 'bin', 'python3');
     const odooBin  = join(service.versionPath, 'community', 'odoo-bin');
     const testTag  = type === 'module' ? `/${value}` : value;
+    const basePort = await getConfHttpPort(service.confPath);
     const args     = [odooBin, '-c', service.confPath, '--addons-path', buildAddonsPaths(service).join(',')];
     if (db) args.push('-d', db);
-    args.push('--test-tags', testTag, '--stop-after-init', '--no-http');
+    if (basePort !== null) {
+      const testPort = basePort + Math.floor(Math.random() * 600) + 100;
+      args.push('--test-tags', testTag, '--stop-after-init', '--http-port', String(testPort));
+    } else {
+      args.push('--test-tags', testTag, '--stop-after-init', '--no-http');
+    }
 
     setLogs([]);
     setExitCode(null);
@@ -177,9 +192,9 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
         setPhase('input_value');
         return;
       }
-      launchTest(db, 'module', trimmed);
+      void launchTest(db, 'module', trimmed);
     } else {
-      launchTest(db, 'tags', trimmed);
+      void launchTest(db, 'tags', trimmed);
     }
   };
 
@@ -216,6 +231,7 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
     if (key.upArrow)   { setScrollOffset(p => Math.min(maxScrollRef.current, p + 3)); return; }
     if (key.downArrow) { setScrollOffset(p => Math.max(0, p - 3)); return; }
     if (exitCode !== null) {
+      if (key.ctrl && char === 'r') { void launchTest(dbInput.trim(), testType, valueInput.trim()); return; }
       if (key.escape || key.return) {
         setPhase('select_type');
         setLogs([]);
@@ -293,12 +309,12 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
           ) : exitCode === 0 ? (
             <Box flexDirection="row" gap={1}>
               {copyResult && <Text color={copyResult === 'ok' ? 'green' : 'red'}>{copyResult === 'ok' ? '✓ Copié !' : '✗ Échec'}</Text>}
-              <Text color="green">✓ Tests terminés (code 0)  ·  Ctrl+U copier  ·  ↵/Échap retour</Text>
+              <Text color="green">✓ Tests terminés (code 0)  ·  Ctrl+R relancer  ·  Ctrl+U copier  ·  ↵/Échap retour</Text>
             </Box>
           ) : (
             <Box flexDirection="row" gap={1}>
               {copyResult && <Text color={copyResult === 'ok' ? 'green' : 'red'}>{copyResult === 'ok' ? '✓ Copié !' : '✗ Échec'}</Text>}
-              <Text color="red">✗ Tests échoués (code {exitCode})  ·  Ctrl+U copier  ·  ↵/Échap retour</Text>
+              <Text color="red">✗ Tests échoués (code {exitCode})  ·  Ctrl+R relancer  ·  Ctrl+U copier  ·  ↵/Échap retour</Text>
             </Box>
           )}
         </Box>

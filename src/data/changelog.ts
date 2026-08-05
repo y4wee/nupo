@@ -13,6 +13,14 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.45',
+    date: '2026-08-05',
+    entries: [
+      { type: 'fix',  label: 'Tests : port HTTP aléatoire basé sur le conf pour éviter les conflits (--no-http si absent)' },
+      { type: 'feat', label: 'Ctrl+R pour relancer le dernier test sans ressaisir les paramètres' },
+    ],
+  },
+  {
     version: '0.2.44',
     date: '2026-07-31',
     entries: [
