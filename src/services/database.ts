@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { cp, rm } from 'node:fs/promises';
 import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import type { OdooVersion } from '../types/index.js';
 
 export interface DatabaseResult {
@@ -30,18 +30,51 @@ function execFileAsync(cmd: string, args: string[]): Promise<{ stdout: string; s
   });
 }
 
-/** Lists .zip and .dump files in repoPath/dumps/ */
-export async function listDumps(repoPath: string): Promise<string[]> {
+export interface DumpEntry {
+  name: string;
+  folder: string;
+  fullPath: string;
+}
+
+const DUMP_EXTENSIONS = ['.zip', '.dump', '.sql'];
+
+function isDumpFile(name: string): boolean {
+  const lc = name.toLowerCase();
+  return DUMP_EXTENSIONS.some(ext => lc.endsWith(ext));
+}
+
+/** Lists .zip, .dump and .sql files in repoPath/dumps/ */
+export async function listDumps(repoPath: string): Promise<DumpEntry[]> {
   const dumpsDir = join(repoPath, 'dumps');
   try {
     const entries = await readdir(dumpsDir);
-    return entries.filter(e => {
-      const lc = e.toLowerCase();
-      return lc.endsWith('.zip') || lc.endsWith('.dump') || lc.endsWith('.sql');
-    });
+    return entries
+      .filter(isDumpFile)
+      .map(name => ({ name, folder: 'dumps', fullPath: join(dumpsDir, name) }));
   } catch {
     return [];
   }
+}
+
+async function walkDir(dir: string): Promise<DumpEntry[]> {
+  const results: DumpEntry[] = [];
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...await walkDir(fullPath));
+      } else if (entry.isFile() && isDumpFile(entry.name)) {
+        results.push({ name: entry.name, folder: basename(dir), fullPath });
+      }
+    }
+  } catch { /* unreadable */ }
+  return results;
+}
+
+/** Recursively lists .zip, .dump and .sql files under dirPath */
+export async function listDumpsFromPath(dirPath: string): Promise<DumpEntry[]> {
+  return walkDir(dirPath);
 }
 
 /** Inspects a zip to check if it contains dump.sql and/or filestore/ */
@@ -416,12 +449,14 @@ export function spawnMigration(
   type: 'test' | 'production',
   enterpriseCode: string | undefined,
   onLine: (line: string) => void,
+  onStdinReady?: (write: (s: string) => void) => void,
 ): Promise<DatabaseResult> {
   const base = `python3 <(curl -s https://upgrade.odoo.com/upgrade) ${type} -d ${dbName} -t ${targetVersion}`;
-  const cmd = enterpriseCode ? `${base} -c ${enterpriseCode}` : base;
+  const cmd = enterpriseCode ? `${base} --contract ${enterpriseCode}` : base;
 
   return new Promise(resolve => {
     const proc = spawn('bash', ['-c', cmd]);
+    onStdinReady?.((s: string) => proc.stdin?.write(s));
     let stderr = '';
     let errorLine = '';
 

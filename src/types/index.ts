@@ -28,6 +28,7 @@ export interface NupoConfig {
   odoo_versions: Record<string, OdooVersion>;
   pending_installs?: Record<string, PendingInstall>;
   odoo_services?: Record<string, OdooServiceConfig>;
+  dump_path?: string;
   log_buffer_size?: number;
   primary_color?: string;
   secondary_color?: string;

@@ -13,7 +13,7 @@ import {
 import { LeftPanel } from '../components/LeftPanel.js';
 import { StepsPanel } from '../components/StepsPanel.js';
 import {
-  listDumps, inspectDump, listDatabases, createDatabase,
+  DumpEntry, listDumps, listDumpsFromPath, inspectDump, listDatabases, createDatabase,
   createTempDir, extractZip, spawnPsqlRestore, spawnPgRestore,
   copyFilestore, removeTempDir, spawnNeutralize,
 } from '../services/database.js';
@@ -68,7 +68,8 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
   const maxJobs = cpus().length;
 
   const [phase, setPhase] = useState<Phase>('select_dump');
-  const [dumps, setDumps] = useState<string[]>([]);
+  const [dumps, setDumps] = useState<DumpEntry[]>([]);
+  const [dumpSearch, setDumpSearch] = useState('');
   const [dumpSelected, setDumpSelected] = useState(0);
   const [selectedDump, setSelectedDump] = useState('');
   const [restoreMode, setRestoreMode] = useState<RestoreMode>('zip');
@@ -96,10 +97,14 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
 
   useEffect(() => {
     const dumpsDir = join(config.odoo_path_repo, 'dumps');
-    void mkdir(dumpsDir, { recursive: true }).then(() => listDumps(config.odoo_path_repo)).then(list => {
-      setDumps(list);
+    void mkdir(dumpsDir, { recursive: true }).then(async () => {
+      const standard = await listDumps(config.odoo_path_repo);
+      const extra = config.dump_path?.trim()
+        ? await listDumpsFromPath(config.dump_path.trim())
+        : [];
+      setDumps([...standard, ...extra]);
     });
-  }, [config.odoo_path_repo]);
+  }, [config.odoo_path_repo, config.dump_path]);
 
   const addLog = useCallback((line: string) => {
     setLogs(prev => {
@@ -110,6 +115,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
 
   const resetState = useCallback(() => {
     setPhase('select_dump');
+    setDumpSearch('');
     setDumpSelected(0);
     setSelectedDump('');
     setRestoreMode('zip');
@@ -131,20 +137,29 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
 
   // ── Phase: select_dump ──────────────────────────────────────────────────────
 
+  const filteredDumps = dumpSearch
+    ? dumps.filter(d => d.name.toLowerCase().includes(dumpSearch.toLowerCase()))
+    : dumps;
+
   useInput(
-    (_char, key) => {
-      if (key.escape) { onBack(); return; }
-      if (dumps.length === 0) return;
+    (char, key) => {
+      if (key.escape) {
+        if (dumpSearch) { setDumpSearch(''); setDumpSelected(0); return; }
+        onBack();
+        return;
+      }
+      if (key.backspace || key.delete) { setDumpSearch(p => p.slice(0, -1)); setDumpSelected(0); return; }
+      if (char && !key.ctrl && !key.meta && char >= ' ') { setDumpSearch(p => p + char); setDumpSelected(0); return; }
+      if (filteredDumps.length === 0) return;
       if (key.upArrow) setDumpSelected(p => Math.max(0, p - 1));
-      if (key.downArrow) setDumpSelected(p => Math.min(dumps.length - 1, p + 1));
+      if (key.downArrow) setDumpSelected(p => Math.min(filteredDumps.length - 1, p + 1));
       if (key.return) {
-        const dump = dumps[dumpSelected];
-        if (!dump) return;
-        const filePath = join(config.odoo_path_repo, 'dumps', dump);
-        const lc = dump.toLowerCase();
+        const entry = filteredDumps[dumpSelected];
+        if (!entry) return;
+        const lc = entry.name.toLowerCase();
         const mode: RestoreMode = lc.endsWith('.dump') ? 'dump' : lc.endsWith('.sql') ? 'sql' : 'zip';
-        setSelectedDump(dump);
-        selectedDumpRef.current = dump;
+        setSelectedDump(entry.name);
+        selectedDumpRef.current = entry.fullPath;
         setRestoreMode(mode);
         restoreModeRef.current = mode;
         if (mode !== 'zip') {
@@ -152,7 +167,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
           hasFilestoreRef.current = false;
           setPhase('db_name');
         } else {
-          void inspectDump(filePath).then(info => {
+          void inspectDump(entry.fullPath).then(info => {
             setHasFilestore(info.hasFilestore);
             hasFilestoreRef.current = info.hasFilestore;
             setPhase('db_name');
@@ -250,9 +265,8 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
   // ── Restore .dump (pg_restore, no filestore, no neutralize) ────────────────
 
   const runRestoreDump = useCallback(async (name: string) => {
-    const dump = selectedDumpRef.current;
+    const dumpPath = selectedDumpRef.current;
     const mode = restoreModeRef.current;
-    const dumpPath = join(config.odoo_path_repo, 'dumps', dump);
     const currentSteps = buildSteps(false, mode);
     setSteps(currentSteps);
     setLogs([]);
@@ -288,13 +302,12 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     update('restore_sql', 'success');
 
     setPhase('done');
-  }, [config.odoo_path_repo, addLog]);
+  }, [addLog]);
 
   // ── Restore .zip (extract → psql → filestore → neutralize → cleanup) ───────
 
   const runRestoreZip = useCallback(async (version: OdooVersion) => {
-    const dump = selectedDumpRef.current;
-    const zipPath = join(config.odoo_path_repo, 'dumps', dump);
+    const zipPath = selectedDumpRef.current;
     const name = dbNameRef.current;
     const fsFlag = hasFilestoreRef.current;
     const tempDir = createTempDir();
@@ -379,7 +392,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     update('cleanup', 'success');
 
     setPhase('done');
-  }, [config.odoo_path_repo, addLog]);
+  }, [addLog]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -404,23 +417,44 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
                 </>
               ) : (
                 <>
-                  <Text color={textColor} dimColor>Sélectionnez un fichier dump :</Text>
-                  <Box flexDirection="column" gap={0}>
-                    {dumps.map((d, i) => {
-                      const isSel = i === dumpSelected;
-                      return (
-                        <Text
-                          key={d}
-                          color={isSel ? 'black' : 'white'}
-                          backgroundColor={isSel ? cursorColor : undefined}
-                          bold={isSel}
-                        >
-                          {` ${isSel ? '▶' : ' '} ${d}`}
-                        </Text>
-                      );
-                    })}
+                  <Box borderStyle="round" borderColor={dumpSearch ? 'cyan' : 'gray'} paddingX={1} flexDirection="row" gap={1}>
+                    <Text color={textColor} dimColor>{'🔍'}</Text>
+                    {dumpSearch
+                      ? <Text color="white">{dumpSearch}</Text>
+                      : <Text color={textColor} dimColor>Rechercher…</Text>
+                    }
                   </Box>
-                  <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
+                  {filteredDumps.length === 0 ? (
+                    <Text color={textColor} dimColor>{`  Aucun fichier correspondant à "${dumpSearch}"`}</Text>
+                  ) : (
+                    <Box flexDirection="column" gap={0}>
+                      {filteredDumps.map((d, i) => {
+                        const isSel = i === dumpSelected;
+                        return (
+                          <Box key={d.fullPath} flexDirection="row" gap={1}>
+                            <Text
+                              color={isSel ? 'black' : 'white'}
+                              backgroundColor={isSel ? cursorColor : undefined}
+                              bold={isSel}
+                            >
+                              {` ${isSel ? '▶' : ' '} ${d.name}`}
+                            </Text>
+                            <Text
+                              color={isSel ? 'black' : textColor}
+                              backgroundColor={isSel ? cursorColor : undefined}
+                              dimColor={!isSel}
+                            >
+                              {`[${d.folder}]`}
+                            </Text>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  )}
+                  <Text color={textColor} dimColor>
+                    {'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap '}
+                    {dumpSearch ? 'effacer filtre' : 'retour'}
+                  </Text>
                 </>
               )}
             </Box>

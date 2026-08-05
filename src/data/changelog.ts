@@ -13,6 +13,15 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.46',
+    date: '2026-08-05',
+    entries: [
+      { type: 'feat', label: 'Restauration : paramètre dump_path — scan récursif d\'un dossier supplémentaire (.zip, .sql, .dump) avec affichage du dossier source' },
+      { type: 'feat', label: 'Restauration : barre de recherche dans la liste des fichiers dump' },
+      { type: 'feat', label: 'Migration : barre de recherche dans la liste des bases de données' },
+    ],
+  },
+  {
     version: '0.2.45',
     date: '2026-08-05',
     entries: [

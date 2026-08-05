@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
@@ -42,6 +42,7 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
   const [dbLoading, setDbLoading] = useState(true);
   const [databases, setDatabases] = useState<string[]>([]);
   const [dbSel, setDbSel] = useState(0);
+  const [dbSearch, setDbSearch] = useState('');
   const [selectedDbName, setSelectedDbName] = useState('');
 
   // Source version selection
@@ -66,6 +67,8 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
   const [migrationOk, setMigrationOk] = useState<boolean | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [logScroll, setLogScroll] = useState(0);
+  const [hasPrompt, setHasPrompt] = useState(false);
+  const stdinWriterRef = useRef<((s: string) => void) | null>(null);
 
   // Load PostgreSQL databases
   useEffect(() => {
@@ -78,18 +81,29 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
 
   // ── select_db ─────────────────────────────────────────────────────────────
 
-  useInput((_char, key) => {
-    if (key.escape) { onBack(); return; }
-    if (dbLoading || databases.length === 0) return;
-    if (key.upArrow) setDbSel(p => Math.max(0, p - 1));
-    if (key.downArrow) setDbSel(p => Math.min(databases.length - 1, p + 1));
+  const filteredDbs = dbSearch
+    ? databases.filter(db => db.toLowerCase().includes(dbSearch.toLowerCase()))
+    : databases;
+
+  useInput((char, key) => {
+    if (key.escape) {
+      if (dbSearch) { setDbSearch(''); setDbSel(0); return; }
+      onBack();
+      return;
+    }
+    if (dbLoading) return;
+    if (key.upArrow)   { setDbSel(p => Math.max(0, p - 1)); return; }
+    if (key.downArrow) { setDbSel(p => Math.min(filteredDbs.length - 1, p + 1)); return; }
     if (key.return) {
-      const db = databases[dbSel];
+      const db = filteredDbs[dbSel];
       if (!db) return;
       setSelectedDbName(db);
       setSourceSel(0);
       setPhase('select_source_version');
+      return;
     }
+    if (key.backspace || key.delete) { setDbSearch(p => p.slice(0, -1)); setDbSel(0); return; }
+    if (char && !key.ctrl && !key.meta && char >= ' ') { setDbSearch(p => p + char); setDbSel(0); }
   }, { isActive: phase === 'select_db' });
 
   // ── select_source_version ─────────────────────────────────────────────────
@@ -161,19 +175,23 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     if (key.return) void runMigration();
   }, { isActive: phase === 'confirm' });
 
-  // ── done ──────────────────────────────────────────────────────────────────
+  // ── running ───────────────────────────────────────────────────────────────
 
-  useInput((_char, key) => {
-    if (key.escape || key.return) onBack();
-  }, { isActive: phase === 'done' });
+  useInput((char, key) => {
+    const write = stdinWriterRef.current;
+    if (!write) return;
+    if (char === 'y' || char === 'Y') { write('Y\n'); setHasPrompt(false); return; }
+    if (char === 'n' || char === 'N') { write('N\n'); setHasPrompt(false); return; }
+    if (key.return) { write('\n'); setHasPrompt(false); }
+  }, { isActive: phase === 'running' });
 
-  // ── error ──────────────────────────────────────────────────────────────────
+  // ── done / error ──────────────────────────────────────────────────────────
 
   useInput((_char, key) => {
     if (key.escape || key.return) { onBack(); return; }
     if (key.upArrow)   setLogScroll(p => Math.min(p + 1, Math.max(0, lines.length - LOG_VISIBLE)));
     if (key.downArrow) setLogScroll(p => Math.max(0, p - 1));
-  }, { isActive: phase === 'error' });
+  }, { isActive: phase === 'done' || phase === 'error' });
 
   // ── runner ────────────────────────────────────────────────────────────────
 
@@ -183,16 +201,23 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
     setMigrationOk(null);
     setErrorMsg('');
     setLogScroll(0);
+    setHasPrompt(false);
+    stdinWriterRef.current = null;
     setPhase('running');
 
     const result = await spawnMigration(
       selectedDbName,
       selectedVersion,
       selectedType,
-      selectedType === 'production' ? enterpriseCode.trim() : undefined,
-      line => setLines(prev => [...prev.slice(-100), line]),
+      enterpriseCode.trim() || undefined,
+      line => {
+        if (/\[Y\/n\]|\[y\/N\]|\[Y\/N\]/i.test(line)) setHasPrompt(true);
+        setLines(prev => [...prev.slice(-100), line]);
+      },
+      write => { stdinWriterRef.current = write; },
     );
 
+    stdinWriterRef.current = null;
     setMigrationOk(result.ok);
     setErrorMsg(result.error ?? '');
     setPhase(result.ok ? 'done' : 'error');
@@ -219,23 +244,36 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
               </>
             ) : (
               <>
-                <Text color={textColor} dimColor>Sélectionnez une base à migrer :</Text>
-                <Box flexDirection="column" gap={0}>
-                  {databases.map((db, i) => {
-                    const isSel = i === dbSel;
-                    return (
-                      <Text
-                        key={db}
-                        color={isSel ? 'black' : 'white'}
-                        backgroundColor={isSel ? cursorColor : undefined}
-                        bold={isSel}
-                      >
-                        {` ${isSel ? '▶' : ' '} ${db}`}
-                      </Text>
-                    );
-                  })}
+                <Box borderStyle="round" borderColor={dbSearch ? 'cyan' : 'gray'} paddingX={1} flexDirection="row" gap={1}>
+                  <Text color={textColor} dimColor>{'🔍'}</Text>
+                  {dbSearch
+                    ? <Text color="white">{dbSearch}</Text>
+                    : <Text color={textColor} dimColor>Rechercher…</Text>
+                  }
                 </Box>
-                <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
+                {filteredDbs.length === 0 ? (
+                  <Text color={textColor} dimColor>{`  Aucune base correspondant à "${dbSearch}"`}</Text>
+                ) : (
+                  <Box flexDirection="column" gap={0}>
+                    {filteredDbs.map((db, i) => {
+                      const isSel = i === dbSel;
+                      return (
+                        <Text
+                          key={db}
+                          color={isSel ? 'black' : 'white'}
+                          backgroundColor={isSel ? cursorColor : undefined}
+                          bold={isSel}
+                        >
+                          {` ${isSel ? '▶' : ' '} ${db}`}
+                        </Text>
+                      );
+                    })}
+                  </Box>
+                )}
+                <Text color={textColor} dimColor>
+                  {'↑↓ naviguer  ·  ↵ sélectionner  ·  Échap '}
+                  {dbSearch ? 'effacer filtre' : 'retour'}
+                </Text>
               </>
             )}
           </Box>
@@ -401,47 +439,46 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
               ))}
               {lines.length === 0 && <Text color={textColor} dimColor>En attente de sortie…</Text>}
             </Box>
+            {hasPrompt && (
+              <Text color="yellow" bold>{'⚠ Le script attend une réponse  ·  Y confirmer  ·  N annuler  ·  ↵ défaut'}</Text>
+            )}
           </Box>
         )}
 
-        {/* done */}
-        {phase === 'done' && (
-          <Box flexDirection="column" gap={1} marginTop={1}>
-            <Text color="green" bold>
-              {'✓ Migration de '}
-              <Text bold>{selectedDbName}</Text>
-              {` vers Odoo ${selectedVersion} terminée avec succès.`}
-            </Text>
-            <Text color={textColor} dimColor>↵/Échap retour</Text>
-          </Box>
-        )}
-
-        {/* error */}
-        {phase === 'error' && (
-          <Box flexDirection="column" gap={1} marginTop={1}>
-            <Text color="red" bold>✗ La migration a échoué.</Text>
-            {errorMsg ? (
-              <Box borderStyle="round" borderColor="red" paddingX={1}>
-                <Text color="red" wrap="wrap">{errorMsg}</Text>
-              </Box>
-            ) : null}
-            {lines.length > 0 && (() => {
-              const total = lines.length;
-              const end = total - logScroll;
-              const start = Math.max(0, end - LOG_VISIBLE);
-              const visible = lines.slice(start, end);
-              const canUp = logScroll < total - LOG_VISIBLE;
-              const canDown = logScroll > 0;
-              return (
+        {/* done / error */}
+        {(phase === 'done' || phase === 'error') && (() => {
+          const total = lines.length;
+          const end = total - logScroll;
+          const start = Math.max(0, end - LOG_VISIBLE);
+          const visible = lines.slice(start, end);
+          const canUp = logScroll < total - LOG_VISIBLE;
+          const canDown = logScroll > 0;
+          return (
+            <Box flexDirection="column" gap={1} marginTop={1}>
+              {phase === 'done' ? (
+                <Text color="green" bold>
+                  {'✓ Migration de '}
+                  <Text bold>{selectedDbName}</Text>
+                  {` vers Odoo ${selectedVersion} terminée avec succès.`}
+                </Text>
+              ) : (
+                <>
+                  <Text color="red" bold>✗ La migration a échoué.</Text>
+                  {errorMsg ? (
+                    <Box borderStyle="round" borderColor="red" paddingX={1}>
+                      <Text color="red" wrap="wrap">{errorMsg}</Text>
+                    </Box>
+                  ) : null}
+                </>
+              )}
+              {total > 0 && (
                 <>
                   <Box flexDirection="row" gap={2}>
                     <Text color={textColor} dimColor>Logs ({total} lignes)</Text>
-                    {(canUp || canDown) && (
-                      <Text color={textColor} dimColor>
-                        {canUp ? '↑ remonter  ' : ''}
-                        {canDown ? '↓ descendre' : ''}
-                      </Text>
-                    )}
+                    <Text color={textColor} dimColor>
+                      {canUp ? '↑ remonter  ' : ''}
+                      {canDown ? '↓ descendre' : ''}
+                    </Text>
                   </Box>
                   <Box flexDirection="column" gap={0} borderStyle="round" borderColor="gray" paddingX={1}>
                     {canUp && <Text color={textColor} dimColor>{'  ···'}</Text>}
@@ -451,11 +488,11 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
                     {canDown && <Text color={textColor} dimColor>{'  ···'}</Text>}
                   </Box>
                 </>
-              );
-            })()}
-            <Text color={textColor} dimColor>↵/Échap retour</Text>
-          </Box>
-        )}
+              )}
+              <Text color={textColor} dimColor>↑↓ scroller  ·  ↵/Échap retour</Text>
+            </Box>
+          );
+        })()}
       </Box>
     </Box>
   );

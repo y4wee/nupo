@@ -41,6 +41,18 @@ const ITEMS: ConfigItem[] = [
   },
   {
     type: 'config',
+    key: 'dump_path',
+    label: 'Chemin dumps supplémentaire',
+    description: 'Chemin absolu vers un dossier scanné récursivement pour les restaurations (.zip, .sql, .dump). Laisser vide pour désactiver.',
+    validate: async (value: string) => {
+      const v = value.trim();
+      if (!v) return null;
+      try { await access(v); return null; }
+      catch { return `Chemin introuvable : ${v}`; }
+    },
+  },
+  {
+    type: 'config',
     key: 'log_buffer_size',
     label: 'Buffer de logs',
     description: 'Nombre de lignes de logs conservées en mémoire lors de l\'exécution d\'un service Odoo. Valeur recommandée : 500–5000.',
