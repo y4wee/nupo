@@ -13,6 +13,13 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.48',
+    date: '2026-08-24',
+    entries: [
+      { type: 'fix', label: 'Tests : dernières lignes toujours visibles (wrap → truncate, reset scroll à la fin)' },
+    ],
+  },
+  {
     version: '0.2.47',
     date: '2026-08-05',
     entries: [

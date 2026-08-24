@@ -36,13 +36,13 @@ const LEVEL_COLORS: Record<string, string> = {
 function LogLine({ line, idx }: { line: string; idx: number }): React.ReactElement {
   const match = line.match(/\b(INFO|WARNING|ERROR|CRITICAL|DEBUG)\b/);
   if (!match || match.index === undefined) {
-    return <Text key={idx} color="white" wrap="wrap">{line}</Text>;
+    return <Text key={idx} color="white" wrap="truncate-end">{line}</Text>;
   }
   const level  = match[0]!;
   const before = line.slice(0, match.index);
   const after  = line.slice(match.index + level.length);
   return (
-    <Text key={idx} color="white" wrap="wrap">
+    <Text key={idx} color="white" wrap="truncate-end">
       {before}<Text color={LEVEL_COLORS[level]}>{level}</Text>{after}
     </Text>
   );
@@ -166,7 +166,10 @@ export function TestServiceScreen({ config, leftWidth, service, onBack }: TestSe
     proc.stderr?.on('data', appendChunk);
     proc.on('close', code => {
       childRef.current = null;
-      if (mountedRef.current) setExitCode(code ?? -1);
+      if (mountedRef.current) {
+        setScrollOffset(0);
+        setExitCode(code ?? -1);
+      }
     });
   };
 
