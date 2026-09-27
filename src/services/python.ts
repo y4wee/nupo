@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
-import { access } from 'node:fs/promises';
+import { access, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { majorMinor } from '../constants/pythonCompatibility.js';
 
 export interface PythonResult {
@@ -166,50 +166,82 @@ export async function createVenv(venvPath: string, pythonBin?: string): Promise<
  * Install pip requirements from a requirements.txt file using the venv's pip.
  * Streams stdout/stderr lines to onOutput for live feedback.
  */
-export function installRequirements(
+export async function installRequirements(
   pipPath: string,
   requirementsPath: string,
   onOutput?: (line: string) => void,
   pythonBin?: string,
 ): Promise<PythonResult> {
-  return new Promise(resolve => {
-    const proc = spawn(pipPath, ['install', '-r', requirementsPath], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+  const runPip = (args: string[], fallbackMsg: string): Promise<PythonResult> => {
+    return new Promise(resolve => {
+      const proc = spawn(pipPath, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let stderrFull = '';
+
+      const handleChunk = (chunk: Buffer) => {
+        for (const part of chunk.toString().split('\n')) {
+          const line = part.trim();
+          if (line) onOutput?.(line);
+        }
+      };
+
+      proc.stdout?.on('data', handleChunk);
+      proc.stderr?.on('data', (chunk: Buffer) => {
+        stderrFull += chunk.toString();
+        handleChunk(chunk);
+      });
+
+      let settled = false;
+      const done = (result: PythonResult) => {
+        if (!settled) { settled = true; resolve(result); }
+      };
+
+      proc.on('error', err => done({ ok: false, error: err.message }));
+      proc.on('close', code => {
+        if (code === 0) {
+          done({ ok: true });
+        } else {
+          const raw =
+            stderrFull.split('\n').map(l => l.trim()).filter(l => /^(error|fatal):/i.test(l)).join(' · ') ||
+            stderrFull.trim().split('\n').pop()?.trim() ||
+            fallbackMsg;
+          done({ ok: false, error: formatPipError(stderrFull, raw, pythonBin) });
+        }
+      });
     });
+  };
 
-    let stderrFull = '';
+  if (process.platform !== 'darwin') {
+    return runPip(['install', '-r', requirementsPath], 'Installation des dépendances échouée');
+  }
 
-    const handleChunk = (chunk: Buffer) => {
-      for (const part of chunk.toString().split('\n')) {
-        const line = part.trim();
-        if (line) onOutput?.(line);
-      }
-    };
+  // macOS: psycopg2 (source) fails to compile without pg_config/headers.
+  // Strip it from requirements.txt and install psycopg2-binary separately instead.
+  let content: string;
+  try {
+    content = await readFile(requirementsPath, 'utf8');
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
 
-    proc.stdout?.on('data', handleChunk);
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      stderrFull += chunk.toString();
-      handleChunk(chunk);
-    });
+  const isPsycopg2Line = (l: string) => /^\s*psycopg2(?!-)\b/i.test(l);
+  if (!content.split('\n').some(isPsycopg2Line)) {
+    return runPip(['install', '-r', requirementsPath], 'Installation des dépendances échouée');
+  }
 
-    let settled = false;
-    const done = (result: PythonResult) => {
-      if (!settled) { settled = true; resolve(result); }
-    };
+  const filtered = content.split('\n').filter(l => !isPsycopg2Line(l)).join('\n');
+  const tmpPath = join(tmpdir(), `nupo-requirements-${Date.now()}.txt`);
+  await writeFile(tmpPath, filtered, 'utf8');
 
-    proc.on('error', err => done({ ok: false, error: err.message }));
-    proc.on('close', code => {
-      if (code === 0) {
-        done({ ok: true });
-      } else {
-        const raw =
-          stderrFull.split('\n').map(l => l.trim()).filter(l => /^(error|fatal):/i.test(l)).join(' · ') ||
-          stderrFull.trim().split('\n').pop()?.trim() ||
-          'Installation des dépendances échouée';
-        done({ ok: false, error: formatPipError(stderrFull, raw, pythonBin) });
-      }
-    });
-  });
+  try {
+    const reqResult = await runPip(['install', '-r', tmpPath], 'Installation des dépendances échouée');
+    if (!reqResult.ok) return reqResult;
+    return runPip(['install', 'psycopg2-binary'], 'Installation de psycopg2-binary échouée');
+  } finally {
+    await rm(tmpPath, { force: true });
+  }
 }
 
 /** pip uninstall -y <packages...> with streaming output. */

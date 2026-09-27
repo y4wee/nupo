@@ -1,4 +1,5 @@
 import { join } from 'path';
+import { existsSync } from 'fs';
 import { OdooServiceConfig } from '../types/index.js';
 
 export function buildAddonsPaths(service: OdooServiceConfig): string[] {
@@ -7,6 +8,9 @@ export function buildAddonsPaths(service: OdooServiceConfig): string[] {
     paths.push(join(service.versionPath, 'enterprise'));
     paths.push(join(service.versionPath, 'themes'));
   }
+  // Industry is independent of enterprise — include it whenever it was cloned.
+  const industryPath = join(service.versionPath, 'industry');
+  if (existsSync(industryPath)) paths.push(industryPath);
   for (const f of service.customFolders) paths.push(join(service.versionPath, 'custom', f));
   return paths;
 }

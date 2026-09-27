@@ -99,7 +99,7 @@ export interface InitStep {
   errorMessage?: string;
 }
 
-export type UpgradeStepId = 'update_community' | 'update_enterprise' | 'update_themes';
+export type UpgradeStepId = 'update_community' | 'update_enterprise' | 'update_themes' | 'update_industry';
 
 export interface UpgradeStep {
   id: UpgradeStepId;
@@ -117,6 +117,7 @@ export type InstallStepId =
   | 'clone_community'
   | 'clone_enterprise'
   | 'clone_themes'
+  | 'clone_industry'
   | 'create_venv'
   | 'install_requirements'
   | 'create_extras';

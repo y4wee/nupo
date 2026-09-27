@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useReducer } from 'rea
 import { Box, Text, useInput } from 'ink';
 import { stat } from 'fs/promises';
 import { join } from 'path';
-import { NupoConfig, OdooVersion, UpgradeStep, StepStatus, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, sortedOdooVersions } from '../types/index.js';
+import { NupoConfig, OdooVersion, UpgradeStep, UpgradeStepId, StepStatus, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, sortedOdooVersions } from '../types/index.js';
 import {
   GitProgress,
   getLocalCommit, getRemoteCommit, updateRepo,
@@ -40,6 +40,13 @@ function stepReducer(state: UpgradeStep[], action: StepAction): UpgradeStep[] {
 async function dirExists(p: string): Promise<boolean> {
   try { return (await stat(p)).isDirectory(); } catch { return false; }
 }
+
+const REPO_FOLDER: Record<UpgradeStepId, string> = {
+  update_community: 'community',
+  update_enterprise: 'enterprise',
+  update_themes: 'themes',
+  update_industry: 'industry',
+};
 
 export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersionScreenProps) {
   const versions = sortedOdooVersions(Object.values(config.odoo_versions));
@@ -158,8 +165,10 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
 
     const enterprisePath = join(version.path, 'enterprise');
     const themesPath = join(version.path, 'themes');
+    const industryPath = join(version.path, 'industry');
     const hasEnterprise = await dirExists(enterprisePath);
     const hasThemes = await dirExists(themesPath);
+    const hasIndustry = await dirExists(industryPath);
 
     const initialSteps: UpgradeStep[] = [
       { id: 'update_community', label: 'Mise à jour community', status: 'pending' },
@@ -168,6 +177,9 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
         : []),
       ...(hasThemes
         ? [{ id: 'update_themes' as const, label: 'Mise à jour themes', status: 'pending' as StepStatus }]
+        : []),
+      ...(hasIndustry
+        ? [{ id: 'update_industry' as const, label: 'Mise à jour industry', status: 'pending' as StepStatus }]
         : []),
     ];
 
@@ -191,11 +203,8 @@ export function UpgradeVersionScreen({ config, leftWidth, onBack }: UpgradeVersi
       dispatchRef.current({ type: 'SET_STATUS', id: step.id, status: 'running', errorMessage: undefined });
       setFetchProgress(null);
 
-      const repoPath = step.id === 'update_community'
-        ? join(version.path, 'community')
-        : step.id === 'update_enterprise'
-          ? join(version.path, 'enterprise')
-          : join(version.path, 'themes');
+      const repoFolder = REPO_FOLDER[step.id as UpgradeStepId];
+      const repoPath = join(version.path, repoFolder);
 
       const r = await updateRepo(repoPath, version.branch, progress => {
         setFetchProgress(progress);

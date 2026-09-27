@@ -4,6 +4,8 @@ export const ODOO_COMMUNITY_URL = 'https://github.com/odoo/odoo.git';
 // Enterprise and design-themes are private repos: use SSH so the user's key is used automatically.
 export const ODOO_ENTERPRISE_URL = 'git@github.com:odoo/enterprise.git';
 export const ODOO_DESIGN_THEMES_URL = 'git@github.com:odoo/design-themes.git';
+// Industry is public: use HTTPS like community.
+export const ODOO_INDUSTRY_URL = 'https://github.com/odoo/industry.git';
 
 export interface GitResult {
   ok: boolean;

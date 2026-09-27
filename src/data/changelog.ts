@@ -13,6 +13,14 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.49',
+    date: '2026-09-26',
+    entries: [
+      { type: 'fix',  label: 'Installation des dépendances Python : bascule automatique sur psycopg2-binary sur macOS (évite l\'échec de compilation)' },
+      { type: 'feat', label: 'Ajout du dépôt Odoo industry (clonage, mise à jour et addons-path) au même titre que community/enterprise/design-themes' },
+    ],
+  },
+  {
     version: '0.2.48',
     date: '2026-08-24',
     entries: [
