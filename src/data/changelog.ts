@@ -13,6 +13,14 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.50',
+    date: '2026-10-01',
+    entries: [
+      { type: 'feat', label: 'Commande code (IDE) : fusionne les clés manquantes dans un settings.json existant au lieu de l\'ignorer (lecture tolérante aux commentaires)' },
+      { type: 'feat', label: 'Commande code (IDE) : ajout de réglages VS Code adaptés à Odoo (diagnosticMode, exclusions __pycache__/venv/datas/dumps)' },
+    ],
+  },
+  {
     version: '0.2.49',
     date: '2026-09-26',
     entries: [
