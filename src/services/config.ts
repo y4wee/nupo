@@ -65,12 +65,9 @@ export async function migrateOdooPath(oldPath: string, newPath: string): Promise
     Object.entries(current.odoo_versions).map(([b, v]) => [b, { ...v, path: fix(v.path) }]),
   );
 
-  const odoo_services = current.odoo_services
+  const odoo_service_overrides = current.odoo_service_overrides
     ? Object.fromEntries(
-        Object.entries(current.odoo_services).map(([n, s]) => [
-          n,
-          { ...s, versionPath: fix(s.versionPath), confPath: fix(s.confPath) },
-        ]),
+        Object.entries(current.odoo_service_overrides).map(([confPath, raw]) => [fix(confPath), raw]),
       )
     : undefined;
 
@@ -84,8 +81,8 @@ export async function migrateOdooPath(oldPath: string, newPath: string): Promise
     ...current,
     odoo_path_repo: newPath,
     odoo_versions,
-    ...(odoo_services   ? { odoo_services }   : {}),
-    ...(pending_installs ? { pending_installs } : {}),
+    ...(odoo_service_overrides ? { odoo_service_overrides } : {}),
+    ...(pending_installs       ? { pending_installs }       : {}),
   });
 
   // Rewrite .vscode/launch.json in each version directory

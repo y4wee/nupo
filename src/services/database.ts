@@ -1,7 +1,8 @@
 import { execFile, spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
-import { cp, rm } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { cp, rm, access } from 'node:fs/promises';
 import { readdir } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import type { OdooVersion } from '../types/index.js';
@@ -247,6 +248,115 @@ export function spawnPsqlRestore(
   });
 }
 
+const PG_LIB_DIR = '/usr/lib/postgresql';
+
+/**
+ * Finds the newest installed `pg_restore` binary (Debian/Ubuntu layout:
+ * /usr/lib/postgresql/<version>/bin/pg_restore). pg_restore must be at least
+ * as new as the pg_dump that produced the archive to parse its header
+ * (otherwise: "unsupported version (x.xx) in file header"), but a newer
+ * pg_restore remains wire-compatible with an older target server — so always
+ * preferring the newest available binary is safe and avoids that error
+ * regardless of which PostgreSQL version produced the dump. Falls back to
+ * the bare `pg_restore` command (whatever PATH/pg_wrapper resolves) when
+ * that directory layout isn't present, e.g. on macOS.
+ */
+export async function findLatestPgRestoreBinary(): Promise<string> {
+  let entries;
+  try {
+    entries = await readdir(PG_LIB_DIR, { withFileTypes: true });
+  } catch {
+    return 'pg_restore';
+  }
+  const versions = entries
+    .filter(e => e.isDirectory())
+    .map(e => parseFloat(e.name))
+    .filter(n => !isNaN(n))
+    .sort((a, b) => b - a);
+  for (const v of versions) {
+    const candidate = join(PG_LIB_DIR, String(v), 'bin', 'pg_restore');
+    try {
+      await access(candidate, fsConstants.X_OK);
+      return candidate;
+    } catch { /* try next version */ }
+  }
+  return 'pg_restore';
+}
+
+/** Parses the major PostgreSQL version that produced a dump, from `pg_restore --list`'s header. */
+export async function getDumpPgVersion(dumpPath: string, pgRestoreBinary: string): Promise<number | null> {
+  try {
+    const { stdout } = await execFileAsync(pgRestoreBinary, ['--list', dumpPath]);
+    const match = stdout.match(/Dumped by pg_dump version:\s*(\d+)/);
+    return match ? parseInt(match[1]!, 10) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Reads the target PostgreSQL server's major version via `SHOW server_version_num`. */
+export async function getServerVersion(): Promise<number | null> {
+  try {
+    const { stdout } = await execFileAsync('psql', [
+      '--no-password', '--dbname', 'postgres', '--tuples-only',
+      '--command', 'SHOW server_version_num',
+    ]);
+    const num = parseInt(stdout.trim(), 10);
+    return isNaN(num) ? null : Math.floor(num / 10000);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parallel pg_restore (-j > 1) crashes outright if a worker's initial session
+ * setup hits an error — which happens whenever the dump was produced by a
+ * newer PostgreSQL major version than the local target server (pg_dump embeds
+ * `SET <newer-GUC> = 0;` in its preamble — e.g. `transaction_timeout`, added
+ * in PG16 — which an older server rejects as "unrecognized configuration
+ * parameter"). That same error is harmless in *sequential* restore (pg_restore
+ * just logs it and continues), so when a mismatch is detected this silently
+ * falls back to a single job instead of letting the parallel restore crash.
+ * Fails open (keeps the requested job count) if either version can't be read.
+ */
+export async function resolveSafeJobCount(
+  requestedJobs: number,
+  dumpPath: string,
+  pgRestoreBinary: string,
+  onLine: (line: string) => void,
+): Promise<number> {
+  if (requestedJobs <= 1) return requestedJobs;
+  const [dumpVersion, serverVersion] = await Promise.all([
+    getDumpPgVersion(dumpPath, pgRestoreBinary),
+    getServerVersion(),
+  ]);
+  if (dumpVersion !== null && serverVersion !== null && dumpVersion > serverVersion) {
+    onLine(
+      `Dump produit par PostgreSQL ${dumpVersion}, serveur local en ${serverVersion} : ` +
+      'restauration séquentielle forcée (le mode parallèle plante sur ce décalage de version).',
+    );
+    return 1;
+  }
+  return requestedJobs;
+}
+
+// Matches pg_restore's own diagnostic prefix specifically — not just any line
+// containing "error"/"erreur" anywhere, since plenty of real Odoo columns are
+// literally named `error` (e.g. account_edi_document.error), and --verbose's
+// routine "création de COMMENT ... .error" progress lines would otherwise be
+// misclassified as failures.
+const PG_RESTORE_ERROR_LINE_RE = /\bpg_restore:\s*(erreur|error)\s*:/i;
+
+// pg_dump always embeds a block of session-setup `SET` statements (session
+// timeouts, encoding, etc.) at the top of every dump. When a dump comes from a
+// newer PostgreSQL major version than the local target server, that preamble
+// can reference a GUC the server doesn't know yet (e.g. `transaction_timeout`,
+// added in PG16) — harmless (it's a session default, not data), but pg_restore
+// still reports a non-zero exit status at the end whenever *any* error was
+// logged, even one it otherwise ignored and continued past. If every captured
+// error line is this exact class of issue, the restore still fully succeeded.
+const BENIGN_GUC_ERROR_RE = /unrecognized configuration parameter/i;
+
 /** Restores a PostgreSQL custom-format dump (.dump) via pg_restore, streaming output */
 export function spawnPgRestore(
   dbName: string,
@@ -255,40 +365,58 @@ export function spawnPgRestore(
   jobs = 1,
 ): Promise<DatabaseResult> {
   return new Promise(resolve => {
-    const args = [
-      '--no-password',
-      '--dbname', dbName,
-      '--no-owner',
-      '--no-privileges',
-    ];
-    if (jobs > 1) args.push('-j', String(jobs));
-    args.push(dumpPath);
-    const proc = spawn('pg_restore', args);
     let stderr = '';
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      for (const l of chunk.toString().split('\n')) {
-        const t = l.trim();
-        if (t) onLine(t);
-      }
-    });
+    void findLatestPgRestoreBinary().then(async binary => {
+      const effectiveJobs = await resolveSafeJobCount(jobs, dumpPath, binary, onLine);
+      const args = [
+        '--no-password',
+        '--dbname', dbName,
+        '--no-owner',
+        '--no-privileges',
+        '--verbose',
+      ];
+      if (effectiveJobs > 1) args.push('-j', String(effectiveJobs));
+      args.push(dumpPath);
 
-    proc.stderr.on('data', (chunk: Buffer) => {
-      for (const l of chunk.toString().split('\n')) {
-        const t = l.trim();
-        if (t) { stderr += t + '\n'; onLine(t); }
-      }
-    });
+      const proc = spawn(binary, args);
 
-    proc.on('close', code => {
-      if (code === 0) {
-        resolve({ ok: true });
-      } else {
+      proc.stdout.on('data', (chunk: Buffer) => {
+        for (const l of chunk.toString().split('\n')) {
+          const t = l.trim();
+          if (t) onLine(t);
+        }
+      });
+
+      // --verbose makes pg_restore report every processed object on stderr, not
+      // just errors, so only lines that actually look like an error are kept for
+      // the final failure summary — otherwise it would be swamped with thousands
+      // of routine progress lines on a large dump.
+      proc.stderr.on('data', (chunk: Buffer) => {
+        for (const l of chunk.toString().split('\n')) {
+          const t = l.trim();
+          if (!t) continue;
+          onLine(t);
+          if (PG_RESTORE_ERROR_LINE_RE.test(t)) stderr += t + '\n';
+        }
+      });
+
+      proc.on('close', code => {
+        if (code === 0) {
+          resolve({ ok: true });
+          return;
+        }
+        const errorLines = stderr.trim().split('\n').filter(Boolean);
+        const onlyBenignErrors = errorLines.length > 0 && errorLines.every(l => BENIGN_GUC_ERROR_RE.test(l));
+        if (onlyBenignErrors) {
+          resolve({ ok: true });
+          return;
+        }
         resolve({ ok: false, error: stderr.trim() || `pg_restore exited with code ${code}` });
-      }
-    });
+      });
 
-    proc.on('error', err => resolve({ ok: false, error: err.message }));
+      proc.on('error', err => resolve({ ok: false, error: err.message }));
+    });
   });
 }
 
@@ -504,12 +632,18 @@ export function spawnMigration(
 export function spawnNeutralize(
   dbName: string,
   versionPath: string,
+  addonsPaths: string[],
 ): Promise<DatabaseResult> {
   const python  = join(versionPath, '.venv', 'bin', 'python3');
   const odooBin = join(versionPath, 'community', 'odoo-bin');
 
   return new Promise(resolve => {
-    const proc = spawn(python, [odooBin, 'neutralize', '-d', dbName]);
+    // odoo-bin's CLI dispatcher (odoo/cli/command.py) only recognizes the
+    // shared --addons-path option as a subcommand prefix when it is a single
+    // "--addons-path=<value>" token; passed as two separate argv entries, it
+    // is swallowed by the default "server" command instead, which then
+    // rejects "neutralize" as an unrecognized positional parameter.
+    const proc = spawn(python, [odooBin, `--addons-path=${addonsPaths.join(',')}`, 'neutralize', '-d', dbName]);
     let stderr = '';
 
     proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });

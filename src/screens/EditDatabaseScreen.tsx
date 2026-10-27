@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { join } from 'node:path';
 import {
-  NupoConfig,
+  NupoConfig, OdooServiceConfig,
   getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor,
 } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
@@ -11,9 +11,10 @@ import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import {
   listFilestoreDatabases, listUsers, hashPassword,
   setUserLogin, setUserPassword, setUserActive,
-  getExpirationDate, extendExpirationDate,
+  getExpirationDate, extendExpirationDate, spawnNeutralize,
   FilestoreEntry, OdooUser,
 } from '../services/database.js';
+import { discoverServices, buildAddonsPaths, buildDefaultAddonsPaths, dirExists } from '../services/odoo.js';
 
 interface EditDatabaseScreenProps {
   config: NupoConfig;
@@ -30,6 +31,9 @@ type EditPhase =
   | 'edit_password'
   | 'confirm_toggle'
   | 'confirm_expiration'
+  | 'select_neutralize_mode'
+  | 'select_neutralize_service'
+  | 'confirm_neutralize'
   | 'running'
   | 'done'
   | 'error';
@@ -37,6 +41,12 @@ type EditPhase =
 const DB_OPTIONS = [
   { id: 'users'      as const, label: 'Gérer les utilisateurs' },
   { id: 'expiration' as const, label: 'Prolonger expiration date (+1 an)' },
+  { id: 'neutralize' as const, label: 'Neutraliser la base' },
+];
+
+const NEUTRALIZE_MODES = [
+  { id: 'default' as const, label: 'Addons par défaut (community + enterprise + industry)' },
+  { id: 'service'  as const, label: "Utiliser les addons-path d'un service existant" },
 ];
 
 export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseScreenProps) {
@@ -82,9 +92,16 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
   const [currentExpDate, setCurrentExpDate] = useState<string | null>(null);
   const [newExpDate, setNewExpDate] = useState<string | null>(null);
 
+  // Neutralize
+  const [neutralizeModeSel, setNeutralizeModeSel] = useState(0);
+  const [neutralizeServices, setNeutralizeServices] = useState<OdooServiceConfig[]>([]);
+  const [neutralizeServiceSel, setNeutralizeServiceSel] = useState(0);
+  const [neutralizeAddonsPaths, setNeutralizeAddonsPaths] = useState<string[]>([]);
+  const [neutralizeSourceLabel, setNeutralizeSourceLabel] = useState('');
+
   // Result
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [lastAction, setLastAction] = useState<'login' | 'password' | 'toggle' | 'expiration' | null>(null);
+  const [lastAction, setLastAction] = useState<'login' | 'password' | 'toggle' | 'expiration' | 'neutralize' | null>(null);
 
   // ── Load databases on mount ───────────────────────────────────────────────
 
@@ -103,6 +120,28 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
   );
 
   const currentDb      = filteredDbs[dbSel];
+
+  // Database list windowing — same height-overflow corruption fix as the
+  // Services screen (OdooServiceScreen.tsx): an unbounded list can exceed the
+  // height-constrained outer Box and corrupt the whole frame. No floor on the
+  // visible count — it must be free to show fewer items on a small terminal.
+  const DB_LIST_OVERHEAD = 17;
+  const maxVisibleDbs = Math.max(0, rows - DB_LIST_OVERHEAD);
+  const dbWindowStartRef = useRef(0);
+  {
+    if (dbSel < dbWindowStartRef.current) {
+      dbWindowStartRef.current = dbSel;
+    } else if (dbSel >= dbWindowStartRef.current + maxVisibleDbs) {
+      dbWindowStartRef.current = dbSel - maxVisibleDbs + 1;
+    }
+    const maxStart = Math.max(0, filteredDbs.length - maxVisibleDbs);
+    dbWindowStartRef.current = Math.min(dbWindowStartRef.current, maxStart);
+  }
+  const dbWindowStart = dbWindowStartRef.current;
+  const visibleDbs = filteredDbs.slice(dbWindowStart, dbWindowStart + maxVisibleDbs);
+  const dbHiddenAbove = dbWindowStart;
+  const dbHiddenBelow = Math.max(0, filteredDbs.length - dbWindowStart - visibleDbs.length);
+
   const filteredUsers  = users.filter(u => u.login.toLowerCase().includes(userSearch.toLowerCase()));
   const currentUser    = filteredUsers[userSel];
   const toggleLabel = selectedUser
@@ -160,6 +199,9 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
       if (opt === 'users') {
         if (selectedDb) loadUsers(selectedDb.dbName);
         setPhase('select_user');
+      } else if (opt === 'neutralize') {
+        setNeutralizeModeSel(0);
+        setPhase('select_neutralize_mode');
       } else {
         void (async () => {
           if (!selectedDb) return;
@@ -256,6 +298,64 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
     }
   }, { isActive: phase === 'confirm_expiration' });
 
+  // ── Input: select_neutralize_mode ─────────────────────────────────────────
+
+  useInput((_char, key) => {
+    if (key.escape) { setPhase('select_db_option'); return; }
+    if (key.upArrow)   setNeutralizeModeSel(p => Math.max(0, p - 1));
+    if (key.downArrow) setNeutralizeModeSel(p => Math.min(NEUTRALIZE_MODES.length - 1, p + 1));
+    if (key.return) {
+      if (!selectedDb) return;
+      const versionPath = versions[selectedDb.versionBranch]?.path;
+      if (!versionPath) return;
+      const modeId = NEUTRALIZE_MODES[neutralizeModeSel]!.id;
+      if (modeId === 'default') {
+        void dirExists(join(versionPath, 'enterprise')).then(useEnterprise => {
+          setNeutralizeAddonsPaths(buildDefaultAddonsPaths(versionPath, useEnterprise));
+          setNeutralizeSourceLabel('Addons par défaut');
+          setConfirmSel(1);
+          setPhase('confirm_neutralize');
+        });
+      } else {
+        void discoverServices(config).then(all => {
+          setNeutralizeServices(all.filter(s => s.branch === selectedDb.versionBranch));
+          setNeutralizeServiceSel(0);
+          setPhase('select_neutralize_service');
+        });
+      }
+    }
+  }, { isActive: phase === 'select_neutralize_mode' });
+
+  // ── Input: select_neutralize_service ──────────────────────────────────────
+
+  useInput((_char, key) => {
+    if (key.escape) { setPhase('select_neutralize_mode'); return; }
+    if (neutralizeServices.length === 0) return;
+    if (key.upArrow)   setNeutralizeServiceSel(p => Math.max(0, p - 1));
+    if (key.downArrow) setNeutralizeServiceSel(p => Math.min(neutralizeServices.length - 1, p + 1));
+    if (key.return) {
+      const svc = neutralizeServices[neutralizeServiceSel];
+      if (!svc) return;
+      setNeutralizeAddonsPaths(buildAddonsPaths(svc));
+      setNeutralizeSourceLabel(`Service "${svc.name}"`);
+      setConfirmSel(1);
+      setPhase('confirm_neutralize');
+    }
+  }, { isActive: phase === 'select_neutralize_service' });
+
+  // ── Input: confirm_neutralize ──────────────────────────────────────────────
+
+  useInput((_char, key) => {
+    if (key.escape) { setPhase('select_neutralize_mode'); return; }
+    if (key.leftArrow)  setConfirmSel(0);
+    if (key.rightArrow) setConfirmSel(1);
+    if (key.return) {
+      if (confirmSel === 1) { setPhase('select_neutralize_mode'); return; }
+      setLastAction('neutralize');
+      void runNeutralize();
+    }
+  }, { isActive: phase === 'confirm_neutralize' });
+
   // ── Input: done / error ───────────────────────────────────────────────────
 
   useInput((_char, key) => {
@@ -263,7 +363,7 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
       setErrorMsg(null);
       if (lastAction === 'login' || lastAction === 'password') {
         setPhase('select_action');
-      } else if (lastAction === 'expiration') {
+      } else if (lastAction === 'expiration' || lastAction === 'neutralize') {
         setPhase('select_db_option');
       } else {
         if (selectedDb) loadUsers(selectedDb.dbName);
@@ -318,6 +418,20 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
     setPhase(result.ok ? 'done' : 'error');
   }, [selectedDb]);
 
+  const runNeutralize = useCallback(async () => {
+    if (!selectedDb) return;
+    const versionPath = versions[selectedDb.versionBranch]?.path;
+    if (!versionPath) {
+      setErrorMsg('Version Odoo introuvable pour cette base.');
+      setPhase('error');
+      return;
+    }
+    setPhase('running');
+    const result = await spawnNeutralize(selectedDb.dbName, versionPath, neutralizeAddonsPaths);
+    setErrorMsg(result.error ?? null);
+    setPhase(result.ok ? 'done' : 'error');
+  }, [selectedDb, versions, neutralizeAddonsPaths]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -346,27 +460,30 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
                   <Text color="yellow">Aucune base correspondante.</Text>
                 ) : (
                   <Box flexDirection="column" gap={0}>
-                    {filteredDbs.map((db, i) => {
-                      const isSel = i === dbSel;
+                    {dbHiddenAbove > 0 && (
+                      <Text color={textColor} dimColor wrap="truncate-end">{`  ▲ ${dbHiddenAbove} de plus`}</Text>
+                    )}
+                    {visibleDbs.map((db, i) => {
+                      const absoluteIdx = dbWindowStart + i;
+                      const isSel = absoluteIdx === dbSel;
                       return (
-                        <Box key={`${db.versionBranch}/${db.dbName}`} flexDirection="row">
-                          <Text
-                            color={isSel ? 'black' : 'white'}
-                            backgroundColor={isSel ? cursorColor : undefined}
-                            bold={isSel}
-                          >
-                            {` ${isSel ? '▶' : ' '} ${db.dbName}`}
-                          </Text>
-                          <Text
-                            color={isSel ? 'black' : textColor}
-                            backgroundColor={isSel ? cursorColor : undefined}
-                            dimColor={!isSel}
-                          >
+                        <Text
+                          key={`${db.versionBranch}/${db.dbName}`}
+                          color={isSel ? 'black' : 'white'}
+                          backgroundColor={isSel ? cursorColor : undefined}
+                          bold={isSel}
+                          wrap="truncate-end"
+                        >
+                          {` ${isSel ? '▶' : ' '} ${db.dbName}`}
+                          <Text color={isSel ? 'black' : textColor} dimColor={!isSel}>
                             {`  [${db.versionBranch}]`}
                           </Text>
-                        </Box>
+                        </Text>
                       );
                     })}
+                    {dbHiddenBelow > 0 && (
+                      <Text color={textColor} dimColor wrap="truncate-end">{`  ▼ ${dbHiddenBelow} de plus`}</Text>
+                    )}
                   </Box>
                 )}
                 <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap {searchQuery ? 'effacer' : 'retour'}</Text>
@@ -630,6 +747,105 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
           </Box>
         )}
 
+        {/* select_neutralize_mode */}
+        {phase === 'select_neutralize_mode' && selectedDb && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Box flexDirection="row" gap={1}>
+              <Text color={textColor} dimColor>Base :</Text>
+              <Text color="white" bold>{selectedDb.dbName}</Text>
+              <Text color={textColor} dimColor>{`[${selectedDb.versionBranch}]`}</Text>
+            </Box>
+            <Text color="white">Addons-path à utiliser pour la neutralisation :</Text>
+            <Box flexDirection="column" gap={0}>
+              {NEUTRALIZE_MODES.map((m, i) => {
+                const isSel = i === neutralizeModeSel;
+                return (
+                  <Text
+                    key={m.id}
+                    color={isSel ? 'black' : 'white'}
+                    backgroundColor={isSel ? cursorColor : undefined}
+                    bold={isSel}
+                  >
+                    {` ${isSel ? '▶' : ' '} ${m.label}`}
+                  </Text>
+                );
+              })}
+            </Box>
+            <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
+          </Box>
+        )}
+
+        {/* select_neutralize_service */}
+        {phase === 'select_neutralize_service' && selectedDb && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Box flexDirection="row" gap={1}>
+              <Text color={textColor} dimColor>Base :</Text>
+              <Text color="white" bold>{selectedDb.dbName}</Text>
+              <Text color={textColor} dimColor>{`[${selectedDb.versionBranch}]`}</Text>
+            </Box>
+            {neutralizeServices.length === 0 ? (
+              <>
+                <Text color="yellow">{`Aucun service trouvé pour la version ${selectedDb.versionBranch}.`}</Text>
+                <Text color={textColor} dimColor>Échap retour</Text>
+              </>
+            ) : (
+              <>
+                <Text color="white">Sélectionnez un service :</Text>
+                <Box flexDirection="column" gap={0}>
+                  {neutralizeServices.map((s, i) => {
+                    const isSel = i === neutralizeServiceSel;
+                    return (
+                      <Text
+                        key={s.confPath}
+                        color={isSel ? 'black' : 'white'}
+                        backgroundColor={isSel ? cursorColor : undefined}
+                        bold={isSel}
+                        wrap="truncate-end"
+                      >
+                        {` ${isSel ? '▶' : ' '} ${s.name}`}
+                        {s.customAddonsPaths.length > 0 ? `  · ${s.customAddonsPaths.length} dossier(s) custom` : ''}
+                      </Text>
+                    );
+                  })}
+                </Box>
+                <Text color={textColor} dimColor>↑↓ naviguer  ·  ↵ sélectionner  ·  Échap retour</Text>
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* confirm_neutralize */}
+        {phase === 'confirm_neutralize' && selectedDb && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Box flexDirection="row" gap={1}>
+              <Text color={textColor} dimColor>Base :</Text>
+              <Text color="white" bold>{selectedDb.dbName}</Text>
+            </Box>
+            <Box flexDirection="row" gap={1}>
+              <Text color={textColor} dimColor>Addons-path :</Text>
+              <Text color="white">{neutralizeSourceLabel}</Text>
+            </Box>
+            <Text color="yellow" dimColor>⚠ Désactive les mails sortants, crons et moyens de paiement de cette base.</Text>
+            <Box flexDirection="row" gap={2} marginTop={1}>
+              <Text
+                color={confirmSel === 0 ? 'black' : primaryColor}
+                backgroundColor={confirmSel === 0 ? primaryColor : undefined}
+                bold={confirmSel === 0}
+              >
+                {' Confirmer '}
+              </Text>
+              <Text
+                color={confirmSel === 1 ? 'black' : textColor}
+                backgroundColor={confirmSel === 1 ? cursorColor : undefined}
+                bold={confirmSel === 1}
+              >
+                {' Annuler '}
+              </Text>
+            </Box>
+            <Text color={textColor} dimColor>◀▶ choisir  ·  ↵ confirmer  ·  Échap annuler</Text>
+          </Box>
+        )}
+
         {/* running */}
         {phase === 'running' && (
           <Box marginTop={1}>
@@ -645,6 +861,12 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
                 {'✓ Expiration prolongée jusqu\'au '}
                 <Text bold>{newExpDate}</Text>
                 {'.'}
+              </Text>
+            ) : lastAction === 'neutralize' ? (
+              <Text color="green">
+                {'✓ Base '}
+                <Text bold>{selectedDb?.dbName}</Text>
+                {' neutralisée avec succès.'}
               </Text>
             ) : (
               <Text color="green">✓ Modification appliquée avec succès.</Text>

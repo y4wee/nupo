@@ -11,13 +11,20 @@ export interface PendingInstall {
   pythonBin?: string;
 }
 
+/**
+ * A "service" is derived at runtime from a .conf file found under
+ * <versionPath>/config/ — see discoverServices() in services/odoo.ts.
+ * Nothing here is persisted as-is; only odoo_service_overrides (the raw
+ * custom path text) survives in config.json, keyed by confPath.
+ */
 export interface OdooServiceConfig {
   name: string;
   branch: string;
   versionPath: string;
-  useEnterprise: boolean;
-  customFolders: string[];
   confPath: string;
+  useEnterprise: boolean;
+  customAddonsPaths: string[];
+  rawCustomOverride: string;
 }
 
 export interface NupoConfig {
@@ -27,7 +34,7 @@ export interface NupoConfig {
   odoo_path_repo: string;
   odoo_versions: Record<string, OdooVersion>;
   pending_installs?: Record<string, PendingInstall>;
-  odoo_services?: Record<string, OdooServiceConfig>;
+  odoo_service_overrides?: Record<string, string>;
   dump_path?: string;
   log_buffer_size?: number;
   primary_color?: string;
@@ -46,7 +53,7 @@ export const DEFAULT_CONFIG: NupoConfig = {
   odoo_path_repo: '',
   odoo_versions: {},
   pending_installs: {},
-  odoo_services: {},
+  odoo_service_overrides: {},
   log_buffer_size: 500,
   primary_color: '#9F0C58',
   secondary_color: '#E79439',

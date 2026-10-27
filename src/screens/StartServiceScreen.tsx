@@ -3,10 +3,10 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn, ChildProcess } from 'child_process';
 import { NupoConfig, OdooServiceConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, CliStartArgs } from '../types/index.js';
-import { buildAddonsPaths, buildLaunchCmd, LaunchOpts } from '../services/odoo.js';
+import { buildAddonsPaths, buildLaunchCmd, discoverServices, LaunchOpts } from '../services/odoo.js';
 import { LeftPanel } from '../components/LeftPanel.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
-import { copyToClipboard } from '../services/system.js';
+import { copyToClipboard, checkPortAvailability } from '../services/system.js';
 
 interface StartServiceScreenProps {
   config: NupoConfig;
@@ -18,11 +18,12 @@ interface StartServiceScreenProps {
   initialService?: OdooServiceConfig;
 }
 
-type Step = 'select' | 'args_list' | 'input_db' | 'input_module' | 'input_install' | 'select_dev' | 'running';
+type Step = 'select' | 'args_list' | 'input_db' | 'input_port' | 'input_module' | 'input_install' | 'select_dev' | 'running';
 
 const ARGS_ITEMS = [
   { key: 'shell'           as const, label: 'shell',             type: 'toggle' as const },
   { key: 'db'              as const, label: '-d <database>',     type: 'input'  as const },
+  { key: 'port'            as const, label: '-p <port>',         type: 'input'  as const },
   { key: 'module'          as const, label: '-u <module>',       type: 'input'  as const },
   { key: 'install'         as const, label: '-i <module>',       type: 'input'  as const },
   { key: 'stop_after_init' as const, label: '--stop-after-init', type: 'toggle' as const },
@@ -84,7 +85,13 @@ export function StartServiceScreen({
   initialService,
 }: StartServiceScreenProps) {
   const { rows } = useTerminalSize();
-  const services = Object.values(config.odoo_services ?? {});
+  // Only used by the 'select' fallback step below, unreachable while nupo
+  // always provides initialService — kept for type-safety / robustness.
+  const [services, setServices] = useState<OdooServiceConfig[]>(initialService ? [initialService] : []);
+  useEffect(() => {
+    if (initialService) return;
+    void discoverServices(config).then(setServices);
+  }, [config, initialService]);
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
 
@@ -101,6 +108,9 @@ export function StartServiceScreen({
   const [noHttp,        setNoHttp]        = useState(false);
   const [devFeatures,   setDevFeatures]   = useState<string[]>([]);
   const [inputValue,    setInputValue]    = useState('');
+  const [httpPort,      setHttpPort]      = useState<number | null>(null);
+  const [portError,     setPortError]     = useState<string | null>(null);
+  const [portChecking,  setPortChecking]  = useState(false);
 
   const [logs,         setLogs]         = useState<string[]>([]);
   const [exitCode,     setExitCode]     = useState<number | null>(null);
@@ -115,6 +125,7 @@ export function StartServiceScreen({
   const childRef         = useRef<ChildProcess | null>(null);
   const mountedRef       = useRef(true);
   const activeServiceRef = useRef<OdooServiceConfig | null>(null);
+  const activePortRef    = useRef<number | null>(null);
   const userStoppedRef   = useRef(false);
   const maxScrollRef     = useRef(0);
 
@@ -148,9 +159,10 @@ export function StartServiceScreen({
   ) => {
     const target = svc ?? service;
     if (!target) return;
-    const opts = overrideOpts ?? { shell: useShell, db: dbName, module: moduleName, install: installName, stopAfterInit, noHttp, devFeatures };
+    const opts = overrideOpts ?? { shell: useShell, db: dbName, module: moduleName, install: installName, stopAfterInit, noHttp, devFeatures, httpPort: httpPort ?? undefined };
 
     activeServiceRef.current = target;
+    activePortRef.current = opts.httpPort ?? null;
     setLogs([]);
     setExitCode(null);
     setScrollOffset(0);
@@ -190,12 +202,11 @@ export function StartServiceScreen({
 
   useEffect(() => {
     if (!autoStart) return;
-    const svc = services.find(s => s.name === autoStart.serviceName);
-    if (!svc) {
+    if (!initialService) {
       setAutoStartError(`Service introuvable : "${autoStart.serviceName}"`);
       return;
     }
-    launchService(svc, {
+    launchService(initialService, {
       shell:         autoStart.shell,
       db:            autoStart.db            ?? '',
       module:        autoStart.module        ?? '',
@@ -228,6 +239,11 @@ export function StartServiceScreen({
         case 'stop_after_init': setStopAfterInit(p => !p); break;
         case 'no_http':         setNoHttp(p => !p); break;
         case 'db':      setInputValue(dbName);      setStep('input_db');      break;
+        case 'port':
+          setInputValue(httpPort !== null ? String(httpPort) : '');
+          setPortError(null);
+          setStep('input_port');
+          break;
         case 'module':  setInputValue(moduleName);  setStep('input_module');  break;
         case 'install': setInputValue(installName); setStep('input_install'); break;
         case 'dev':     setDevCursor(0);            setStep('select_dev');    break;
@@ -239,6 +255,32 @@ export function StartServiceScreen({
   useInput((_char, key) => {
     if (key.escape) setStep('args_list');
   }, { isActive: step === 'input_db' });
+
+  useInput((_char, key) => {
+    if (key.escape && !portChecking) setStep('args_list');
+  }, { isActive: step === 'input_port' });
+
+  const handlePortSubmit = (value: string) => {
+    if (portChecking) return;
+    const raw = value.trim();
+    if (!raw) { setHttpPort(null); setStep('args_list'); return; }
+    const port = Number(raw);
+    if (!/^\d+$/.test(raw) || port < 1 || port > 65535) {
+      setPortError('Port invalide : entrez un nombre entre 1 et 65535.');
+      return;
+    }
+    setPortChecking(true);
+    void checkPortAvailability(port).then(status => {
+      if (!mountedRef.current) return;
+      setPortChecking(false);
+      if (status === 'available') { setHttpPort(port); setStep('args_list'); return; }
+      setPortError(
+        status === 'in_use'            ? `Le port ${port} est déjà utilisé.` :
+        status === 'permission_denied' ? `Le port ${port} nécessite les droits root (ports < 1024).` :
+                                         `Impossible de vérifier le port ${port}.`,
+      );
+    });
+  };
 
   useInput((_char, key) => {
     if (key.escape) setStep('args_list');
@@ -350,6 +392,7 @@ export function StartServiceScreen({
   const argIsSet: Record<string, boolean> = {
     shell:           useShell,
     db:              !!dbName,
+    port:            httpPort !== null,
     module:          !!moduleName,
     install:         !!installName,
     stop_after_init: stopAfterInit,
@@ -358,12 +401,14 @@ export function StartServiceScreen({
   };
   const argDisplay: Record<string, string> = {
     db:     dbName,
+    port:   httpPort !== null ? String(httpPort) : '',
     module: moduleName,
     install: installName,
     dev:    devFeatures.length > 0 ? devFeatures.join(',') : '',
   };
 
   const activeService = activeServiceRef.current;
+  const activePort = activeService ? (activePortRef.current ?? httpPortForBranch(activeService.branch)) : null;
 
   // ── JSX ───────────────────────────────────────────────────────────────────
 
@@ -372,8 +417,8 @@ export function StartServiceScreen({
       <Box flexGrow={1} flexDirection="column" paddingX={2} paddingY={1} gap={1}>
         {/* URLs */}
         <Box borderStyle="round" borderColor="gray" paddingX={2} paddingY={0} flexDirection="column">
-          <Text color="yellow">{`http://localhost:${httpPortForBranch(activeService.branch)}`}</Text>
-          <Text color="yellow">{`http://localhost:${httpPortForBranch(activeService.branch)}/web/database/manager`}</Text>
+          <Text color="yellow">{`http://localhost:${activePort}`}</Text>
+          <Text color="yellow">{`http://localhost:${activePort}/web/database/manager`}</Text>
         </Box>
 
         {/* Filter */}
@@ -597,6 +642,25 @@ export function StartServiceScreen({
                 placeholder="ma_base"
               />
             </Box>
+            <Text color={textColor} dimColor>↵ valider  ·  Échap retour</Text>
+          </Box>
+        )}
+
+        {/* ── input_port ── */}
+        {step === 'input_port' && (
+          <Box flexDirection="column" gap={1} marginTop={1}>
+            <Text color="white">Port HTTP (-p) <Text color={textColor} dimColor>(vide = port du .conf)</Text> :</Text>
+            <Box>
+              <Text color={textColor} dimColor>{'› '}</Text>
+              <TextInput
+                value={inputValue}
+                onChange={v => { setInputValue(v); setPortError(null); }}
+                onSubmit={handlePortSubmit}
+                placeholder="8069"
+              />
+            </Box>
+            {portChecking && <Text color={textColor} dimColor>Vérification du port…</Text>}
+            {portError && <Text color="red">{portError}</Text>}
             <Text color={textColor} dimColor>↵ valider  ·  Échap retour</Text>
           </Box>
         )}

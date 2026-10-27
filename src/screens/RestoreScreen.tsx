@@ -17,6 +17,7 @@ import {
   createTempDir, extractZip, spawnPsqlRestore, spawnPgRestore,
   copyFilestore, removeTempDir, spawnNeutralize,
 } from '../services/database.js';
+import { dirExists, buildDefaultAddonsPaths } from '../services/odoo.js';
 
 interface RestoreScreenProps {
   config: NupoConfig;
@@ -42,7 +43,9 @@ type RestoreMode = 'zip' | 'dump' | 'sql';
 function buildSteps(hasFilestore: boolean, mode: RestoreMode): AnyStep[] {
   return STEP_DEFS
     .filter(d => {
-      if (mode === 'dump' || mode === 'sql') return d.id === 'create_db' || d.id === 'restore_sql';
+      if (mode === 'dump' || mode === 'sql') {
+        return d.id === 'create_db' || d.id === 'restore_sql' || d.id === 'neutralize';
+      }
       if (d.id === 'copy_filestore') return hasFilestore;
       return true;
     })
@@ -141,6 +144,27 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     ? dumps.filter(d => d.name.toLowerCase().includes(dumpSearch.toLowerCase()))
     : dumps;
 
+  // Dump list windowing — same height-overflow corruption fix as the Services
+  // screen (OdooServiceScreen.tsx): an unbounded list can exceed the
+  // height-constrained outer Box and corrupt the whole frame. No floor on the
+  // visible count — it must be free to show fewer items on a small terminal.
+  const DUMP_LIST_OVERHEAD = 19;
+  const maxVisibleDumps = Math.max(0, rows - DUMP_LIST_OVERHEAD);
+  const dumpWindowStartRef = useRef(0);
+  {
+    if (dumpSelected < dumpWindowStartRef.current) {
+      dumpWindowStartRef.current = dumpSelected;
+    } else if (dumpSelected >= dumpWindowStartRef.current + maxVisibleDumps) {
+      dumpWindowStartRef.current = dumpSelected - maxVisibleDumps + 1;
+    }
+    const maxStart = Math.max(0, filteredDumps.length - maxVisibleDumps);
+    dumpWindowStartRef.current = Math.min(dumpWindowStartRef.current, maxStart);
+  }
+  const dumpWindowStart = dumpWindowStartRef.current;
+  const visibleDumps = filteredDumps.slice(dumpWindowStart, dumpWindowStart + maxVisibleDumps);
+  const dumpHiddenAbove = dumpWindowStart;
+  const dumpHiddenBelow = Math.max(0, filteredDumps.length - dumpWindowStart - visibleDumps.length);
+
   useInput(
     (char, key) => {
       if (key.escape) {
@@ -206,8 +230,6 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
       setJobCount(1);
       jobCountRef.current = 1;
       setPhase('select_jobs');
-    } else if (restoreModeRef.current === 'sql') {
-      void runRestoreDump(name);
     } else {
       setPhase('select_version');
     }
@@ -233,21 +255,26 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
         });
       }
       if (key.return) {
-        void runRestoreDump(dbNameRef.current);
+        setPhase('select_version');
       }
     },
     { isActive: phase === 'select_jobs' },
   );
 
-  // ── Phase: select_version (zip only) ───────────────────────────────────────
+  // ── Phase: select_version (Odoo version, used for the filestore target on
+  //    .zip and for neutralize's odoo-bin on every mode) ──────────────────────
 
   useInput(
     (_char, key) => {
-      if (key.escape) { setPhase('db_name'); return; }
+      if (key.escape) { setPhase(restoreModeRef.current === 'dump' ? 'select_jobs' : 'db_name'); return; }
       if (key.upArrow) setVersionSelected(p => Math.max(0, p - 1));
       if (key.downArrow) setVersionSelected(p => Math.min(versions.length - 1, p + 1));
       if (key.return && versions[versionSelected]) {
-        void runRestoreZip(versions[versionSelected]!);
+        if (restoreModeRef.current === 'zip') {
+          void runRestoreZip(versions[versionSelected]!);
+        } else {
+          void runRestoreDump(dbNameRef.current, versions[versionSelected]!);
+        }
       }
     },
     { isActive: phase === 'select_version' },
@@ -262,9 +289,9 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
     { isActive: phase === 'done' || phase === 'error' },
   );
 
-  // ── Restore .dump (pg_restore, no filestore, no neutralize) ────────────────
+  // ── Restore .dump / .sql (no filestore — restore + neutralize) ─────────────
 
-  const runRestoreDump = useCallback(async (name: string) => {
+  const runRestoreDump = useCallback(async (name: string, version: OdooVersion) => {
     const dumpPath = selectedDumpRef.current;
     const mode = restoreModeRef.current;
     const currentSteps = buildSteps(false, mode);
@@ -300,6 +327,19 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
       return;
     }
     update('restore_sql', 'success');
+
+    // 3. neutralize
+    update('neutralize', 'running');
+    const useEnterprise = await dirExists(join(version.path, 'enterprise'));
+    const addonsPaths = buildDefaultAddonsPaths(version.path, useEnterprise);
+    const neutralizeResult = await spawnNeutralize(name, version.path, addonsPaths);
+    if (!neutralizeResult.ok) {
+      update('neutralize', 'error', neutralizeResult.error);
+      setErrorMsg(neutralizeResult.error ?? 'Échec neutralisation');
+      setPhase('error');
+      return;
+    }
+    update('neutralize', 'success');
 
     setPhase('done');
   }, [addLog]);
@@ -376,7 +416,9 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
 
     // 5. neutralize
     update('neutralize', 'running');
-    const neutralizeResult = await spawnNeutralize(name, version.path);
+    const useEnterprise = await dirExists(join(version.path, 'enterprise'));
+    const addonsPaths = buildDefaultAddonsPaths(version.path, useEnterprise);
+    const neutralizeResult = await spawnNeutralize(name, version.path, addonsPaths);
     if (!neutralizeResult.ok) {
       update('neutralize', 'error', neutralizeResult.error);
       setErrorMsg(neutralizeResult.error ?? 'Échec neutralisation');
@@ -428,27 +470,30 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
                     <Text color={textColor} dimColor>{`  Aucun fichier correspondant à "${dumpSearch}"`}</Text>
                   ) : (
                     <Box flexDirection="column" gap={0}>
-                      {filteredDumps.map((d, i) => {
-                        const isSel = i === dumpSelected;
+                      {dumpHiddenAbove > 0 && (
+                        <Text color={textColor} dimColor wrap="truncate-end">{`  ▲ ${dumpHiddenAbove} de plus`}</Text>
+                      )}
+                      {visibleDumps.map((d, i) => {
+                        const absoluteIdx = dumpWindowStart + i;
+                        const isSel = absoluteIdx === dumpSelected;
                         return (
-                          <Box key={d.fullPath} flexDirection="row" gap={1}>
-                            <Text
-                              color={isSel ? 'black' : 'white'}
-                              backgroundColor={isSel ? cursorColor : undefined}
-                              bold={isSel}
-                            >
-                              {` ${isSel ? '▶' : ' '} ${d.name}`}
-                            </Text>
-                            <Text
-                              color={isSel ? 'black' : textColor}
-                              backgroundColor={isSel ? cursorColor : undefined}
-                              dimColor={!isSel}
-                            >
+                          <Text
+                            key={d.fullPath}
+                            color={isSel ? 'black' : 'white'}
+                            backgroundColor={isSel ? cursorColor : undefined}
+                            bold={isSel}
+                            wrap="truncate-end"
+                          >
+                            {` ${isSel ? '▶' : ' '} ${d.name} `}
+                            <Text color={isSel ? 'black' : textColor} dimColor={!isSel}>
                               {`[${d.folder}]`}
                             </Text>
-                          </Box>
+                          </Text>
                         );
                       })}
+                      {dumpHiddenBelow > 0 && (
+                        <Text color={textColor} dimColor wrap="truncate-end">{`  ▼ ${dumpHiddenBelow} de plus`}</Text>
+                      )}
                     </Box>
                   )}
                   <Text color={textColor} dimColor>
@@ -504,7 +549,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
             </Box>
           )}
 
-          {/* Phase: select_version (zip only) */}
+          {/* Phase: select_version */}
           {phase === 'select_version' && (
             <Box flexDirection="column" gap={1} marginTop={1}>
               <Text color={textColor} dimColor>
@@ -518,7 +563,11 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
                 </>
               ) : (
                 <>
-                  <Text color={textColor} dimColor>Sélectionnez la version Odoo (pour le filestore et la neutralisation) :</Text>
+                  <Text color={textColor} dimColor>
+                    {restoreMode === 'zip'
+                      ? 'Sélectionnez la version Odoo (pour le filestore et la neutralisation) :'
+                      : 'Sélectionnez la version Odoo (pour la neutralisation) :'}
+                  </Text>
                   <Box flexDirection="column" gap={0}>
                     {versions.map((v, i) => {
                       const isSel = i === versionSelected;

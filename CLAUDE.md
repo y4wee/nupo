@@ -24,7 +24,9 @@ Appeler l'utilisateur "mon chaton".
 ## Validation
 
 - Run `npm run build` (`tsc`) — must complete with zero errors before any change is considered done
-- No automated tests; verify behavior manually in the terminal with `npm run dev`
+- Run `npm run test` (`vitest run`) — must pass before any change is considered done
+- Any new or changed logic in `src/services/` must have unit tests added/updated in `src/__tests__/`
+- For UI/screen changes, also verify behavior manually in the terminal with `npm run dev`
 
 ## Stack
 

@@ -5,7 +5,7 @@ import { App } from './App.js';
 import { CliStartArgs } from './types/index.js';
 import { configExists, readConfig, patchConfig } from './services/config.js';
 import { setupVsCode } from './services/ide.js';
-import { buildLaunchCmd } from './services/odoo.js';
+import { buildLaunchCmd, discoverServices } from './services/odoo.js';
 import { spawn } from 'node:child_process';
 
 // ── Help ─────────────────────────────────────────────────────────────────────
@@ -123,10 +123,10 @@ if (startupArgs) {
     process.stderr.write(`nupo: nupo n'est pas initialisé. Lancez "nupo" pour configurer.\n`);
     process.exit(1);
   }
-  const services = cfg.odoo_services ?? {};
-  const service = services[startupArgs.serviceName];
+  const services = await discoverServices(cfg);
+  const service = services.find(s => s.name === startupArgs.serviceName);
   if (!service) {
-    const names = Object.keys(services);
+    const names = services.map(s => s.name);
     const list  = names.length > 0 ? names.join(', ') : 'aucun';
     process.stderr.write(
       `nupo: service introuvable : "${startupArgs.serviceName}"\nServices disponibles : ${list}\n`,

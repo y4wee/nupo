@@ -1,5 +1,6 @@
 import { spawnSync } from 'child_process';
 import { openSync, writeSync, closeSync } from 'fs';
+import { createServer } from 'net';
 import clipboard from 'clipboardy';
 
 type RawStdin = NodeJS.ReadStream & { setRawMode?: (mode: boolean) => void };
@@ -55,4 +56,22 @@ export function copyToClipboard(text: string): ClipboardResult {
   } catch { /* fall through */ }
 
   return 'failed';
+}
+
+export type PortAvailability = 'available' | 'in_use' | 'permission_denied' | 'error';
+
+/** Checks whether a TCP port can be bound on all interfaces, as Odoo does by default. */
+export function checkPortAvailability(port: number): Promise<PortAvailability> {
+  return new Promise(resolve => {
+    const server = createServer();
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') resolve('in_use');
+      else if (err.code === 'EACCES') resolve('permission_denied');
+      else resolve('error');
+    });
+    server.once('listening', () => {
+      server.close(() => resolve('available'));
+    });
+    server.listen(port, '0.0.0.0');
+  });
 }

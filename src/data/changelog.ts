@@ -13,6 +13,18 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.51',
+    date: '2026-10-27',
+    entries: [
+      { type: 'feat', label: 'Services : détection automatique des services depuis les fichiers .conf de chaque version (plus de liste stockée dans la config)' },
+      { type: 'feat', label: 'Services : paramètre "Custom path" (chemins custom séparés par des virgules) à la place de la sélection Enterprise/dossiers custom' },
+      { type: 'feat', label: 'Lancement d\'un service : option -p pour choisir le port HTTP, avec vérification de disponibilité à la validation' },
+      { type: 'feat', label: 'Bases de données : neutralisation d\'une base (odoo-bin neutralize) depuis l\'écran de modification et après une restauration' },
+      { type: 'fix',  label: 'Restauration : utilise le pg_restore le plus récent et repasse en mode séquentiel si le dump vient d\'un PostgreSQL plus récent que le serveur' },
+      { type: 'fix',  label: 'Listes des services, dumps et bases : affichage défilant avec indicateurs ▲/▼, plus de lignes corrompues sur les petits terminaux' },
+    ],
+  },
+  {
     version: '0.2.50',
     date: '2026-10-01',
     entries: [
