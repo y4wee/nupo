@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, sortedOdooVersions } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import {
   listFilestoreDatabases, dropDatabase, removeFilestoreEntry,
   FilestoreEntry,
@@ -20,6 +21,8 @@ export function DropScreen({ config, leftWidth, onBack }: DropScreenProps) {
   const secondaryColor = getSecondaryColor(config);
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
+
+  const { rows } = useTerminalSize();
 
   const versions = sortedOdooVersions(Object.values(config.odoo_versions ?? {}));
 
@@ -51,6 +54,27 @@ export function DropScreen({ config, leftWidth, onBack }: DropScreenProps) {
     ? entries.filter(e => e.dbName.toLowerCase().includes(search.toLowerCase()))
     : entries;
   const currentEntry = filteredEntries[selected];
+
+  // List windowing — same height-overflow corruption fix as the Services
+  // screen (OdooServiceScreen.tsx): an unbounded list can exceed the
+  // height-constrained outer Box and corrupt the whole frame. No floor on the
+  // visible count — it must be free to show fewer items on a small terminal.
+  const LIST_OVERHEAD = 21;
+  const maxVisible = Math.max(0, rows - LIST_OVERHEAD);
+  const windowStartRef = useRef(0);
+  {
+    if (selected < windowStartRef.current) {
+      windowStartRef.current = selected;
+    } else if (selected >= windowStartRef.current + maxVisible) {
+      windowStartRef.current = selected - maxVisible + 1;
+    }
+    const maxStart = Math.max(0, filteredEntries.length - maxVisible);
+    windowStartRef.current = Math.min(windowStartRef.current, maxStart);
+  }
+  const windowStart = windowStartRef.current;
+  const visibleEntries = filteredEntries.slice(windowStart, windowStart + maxVisible);
+  const hiddenAbove = windowStart;
+  const hiddenBelow = Math.max(0, filteredEntries.length - windowStart - visibleEntries.length);
 
   // ── select ────────────────────────────────────────────────────────────────
 
@@ -160,27 +184,29 @@ export function DropScreen({ config, leftWidth, onBack }: DropScreenProps) {
                   <Text color={textColor} dimColor>{`  Aucune base correspondant à "${search}"`}</Text>
                 ) : (
                   <Box flexDirection="column" gap={0}>
-                    {filteredEntries.map((e, i) => {
-                      const isSel = i === selected;
+                    {hiddenAbove > 0 && (
+                      <Text color={textColor} dimColor wrap="truncate-end">{`  ▲ ${hiddenAbove} de plus`}</Text>
+                    )}
+                    {visibleEntries.map((e, i) => {
+                      const isSel = windowStart + i === selected;
                       return (
-                        <Box key={`${e.versionBranch}/${e.dbName}`} flexDirection="row">
-                          <Text
-                            color={isSel ? 'black' : 'white'}
-                            backgroundColor={isSel ? cursorColor : undefined}
-                            bold={isSel}
-                          >
-                            {` ${isSel ? '▶' : ' '} ${e.dbName}`}
-                          </Text>
-                          <Text
-                            color={isSel ? 'black' : textColor}
-                            backgroundColor={isSel ? cursorColor : undefined}
-                            dimColor={!isSel}
-                          >
+                        <Text
+                          key={`${e.versionBranch}/${e.dbName}`}
+                          color={isSel ? 'black' : 'white'}
+                          backgroundColor={isSel ? cursorColor : undefined}
+                          bold={isSel}
+                          wrap="truncate-end"
+                        >
+                          {` ${isSel ? '▶' : ' '} ${e.dbName}`}
+                          <Text color={isSel ? 'black' : textColor} dimColor={!isSel}>
                             {`  [${e.versionBranch}]`}
                           </Text>
-                        </Box>
+                        </Text>
                       );
                     })}
+                    {hiddenBelow > 0 && (
+                      <Text color={textColor} dimColor wrap="truncate-end">{`  ▼ ${hiddenBelow} de plus`}</Text>
+                    )}
                   </Box>
                 )}
                 <Text color={textColor} dimColor>

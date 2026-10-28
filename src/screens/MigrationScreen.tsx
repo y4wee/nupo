@@ -4,6 +4,7 @@ import TextInput from 'ink-text-input';
 import { join } from 'node:path';
 import { NupoConfig, getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { listDatabases, spawnMigration, copyFilestore } from '../services/database.js';
 
 interface MigrationScreenProps {
@@ -95,6 +96,28 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
   const filteredDbs = dbSearch
     ? databases.filter(db => db.toLowerCase().includes(dbSearch.toLowerCase()))
     : databases;
+
+  // DB list windowing — same height-overflow corruption fix as the Services
+  // screen (OdooServiceScreen.tsx): an unbounded list can exceed the
+  // height-constrained outer Box and corrupt the whole frame. No floor on the
+  // visible count — it must be free to show fewer items on a small terminal.
+  const { rows } = useTerminalSize();
+  const DB_LIST_OVERHEAD = 21;
+  const maxVisibleDbs = Math.max(0, rows - DB_LIST_OVERHEAD);
+  const dbWindowStartRef = useRef(0);
+  {
+    if (dbSel < dbWindowStartRef.current) {
+      dbWindowStartRef.current = dbSel;
+    } else if (dbSel >= dbWindowStartRef.current + maxVisibleDbs) {
+      dbWindowStartRef.current = dbSel - maxVisibleDbs + 1;
+    }
+    const maxStart = Math.max(0, filteredDbs.length - maxVisibleDbs);
+    dbWindowStartRef.current = Math.min(dbWindowStartRef.current, maxStart);
+  }
+  const dbWindowStart = dbWindowStartRef.current;
+  const visibleDbs = filteredDbs.slice(dbWindowStart, dbWindowStart + maxVisibleDbs);
+  const dbHiddenAbove = dbWindowStart;
+  const dbHiddenBelow = Math.max(0, filteredDbs.length - dbWindowStart - visibleDbs.length);
 
   useInput((char, key) => {
     if (key.escape) {
@@ -338,19 +361,26 @@ export function MigrationScreen({ config, leftWidth, onBack }: MigrationScreenPr
                   <Text color={textColor} dimColor>{`  Aucune base correspondant à "${dbSearch}"`}</Text>
                 ) : (
                   <Box flexDirection="column" gap={0}>
-                    {filteredDbs.map((db, i) => {
-                      const isSel = i === dbSel;
+                    {dbHiddenAbove > 0 && (
+                      <Text color={textColor} dimColor wrap="truncate-end">{`  ▲ ${dbHiddenAbove} de plus`}</Text>
+                    )}
+                    {visibleDbs.map((db, i) => {
+                      const isSel = dbWindowStart + i === dbSel;
                       return (
                         <Text
                           key={db}
                           color={isSel ? 'black' : 'white'}
                           backgroundColor={isSel ? cursorColor : undefined}
                           bold={isSel}
+                          wrap="truncate-end"
                         >
                           {` ${isSel ? '▶' : ' '} ${db}`}
                         </Text>
                       );
                     })}
+                    {dbHiddenBelow > 0 && (
+                      <Text color={textColor} dimColor wrap="truncate-end">{`  ▼ ${dbHiddenBelow} de plus`}</Text>
+                    )}
                   </Box>
                 )}
                 <Text color={textColor} dimColor>

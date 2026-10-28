@@ -13,6 +13,16 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.52',
+    date: '2026-10-28',
+    entries: [
+      { type: 'fix', label: 'Désinstaller une base et Migration : liste des bases défilante, plus de cadre de recherche écrasé ni de lignes fusionnées' },
+      { type: 'fix', label: 'Modification : liste des utilisateurs adaptée à la hauteur du terminal (plus de lignes fusionnées)' },
+      { type: 'fix', label: 'Librairies Python : liste des dépendances à installer limitée à la hauteur du terminal' },
+      { type: 'fix', label: 'Listes des dumps, bases et utilisateurs : affichage correct quand le bandeau de mise à jour est visible' },
+    ],
+  },
+  {
     version: '0.2.51',
     date: '2026-10-27',
     entries: [

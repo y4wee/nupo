@@ -8,6 +8,7 @@ import {
   getPrimaryColor, getSecondaryColor, getTextColor, getCursorColor, sortedOdooVersions,
 } from '../types/index.js';
 import { LeftPanel } from '../components/LeftPanel.js';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { pipInstallPackages, pipUninstallPackages, getInstalledPackages, normalizePkg } from '../services/python.js';
 import { scanManifestDependencies } from '../services/manifest.js';
 import { copyToClipboard, extractCopyableCommand } from '../services/system.js';
@@ -56,6 +57,13 @@ export function PipInstallScreen({ config, leftWidth, onBack }: PipInstallScreen
   const cursorColor    = getCursorColor(config);
 
   const versions = sortedOdooVersions(Object.values(config.odoo_versions ?? {}));
+
+  // Cap the "to install" list so the frame never exceeds the terminal height
+  // (same overflow corruption as the Services list): 22 fixed rows of chrome
+  // incl. the "Déjà installées" block, +1 for the "… et N autre(s)" line, +2
+  // for App.tsx's update banner.
+  const { rows } = useTerminalSize();
+  const maxVisiblePkgs = Math.max(0, rows - 25);
 
   const [phase,       setPhase]       = useState<Phase>('version_select');
   const [versionSel,  setVersionSel]  = useState(0);
@@ -324,7 +332,7 @@ export function PipInstallScreen({ config, leftWidth, onBack }: PipInstallScreen
         {/* ── Global confirm ── */}
         {phase === 'global_confirm' && (
           <Box flexDirection="column" gap={1} marginTop={1}>
-            <Text color={textColor} dimColor>{scanStatus}</Text>
+            <Text color={textColor} dimColor wrap="truncate-end">{scanStatus}</Text>
 
             {toInstall.length === 0 ? (
               <>
@@ -335,14 +343,17 @@ export function PipInstallScreen({ config, leftWidth, onBack }: PipInstallScreen
               <>
                 <Box flexDirection="column" gap={0}>
                   <Text color="white" bold>{`Dépendances à installer (${toInstall.length}) :`}</Text>
-                  {toInstall.map(p => (
-                    <Text key={p} color={textColor}>{`  • ${p}`}</Text>
+                  {toInstall.slice(0, maxVisiblePkgs).map(p => (
+                    <Text key={p} color={textColor} wrap="truncate-end">{`  • ${p}`}</Text>
                   ))}
+                  {toInstall.length > maxVisiblePkgs && (
+                    <Text color={textColor} dimColor wrap="truncate-end">{`  … et ${toInstall.length - maxVisiblePkgs} autre(s)`}</Text>
+                  )}
                 </Box>
                 {alreadyInst.length > 0 && (
                   <Box flexDirection="column" gap={0}>
                     <Text color={textColor} dimColor bold>{`Déjà installées (${alreadyInst.length}) :`}</Text>
-                    <Text color={textColor} dimColor>{`  ${alreadyInst.join(', ')}`}</Text>
+                    <Text color={textColor} dimColor wrap="truncate-end">{`  ${alreadyInst.join(', ')}`}</Text>
                   </Box>
                 )}
                 <Box flexDirection="row" gap={2} marginTop={1}>

@@ -148,7 +148,7 @@ export function RestoreScreen({ config, leftWidth, onBack }: RestoreScreenProps)
   // screen (OdooServiceScreen.tsx): an unbounded list can exceed the
   // height-constrained outer Box and corrupt the whole frame. No floor on the
   // visible count — it must be free to show fewer items on a small terminal.
-  const DUMP_LIST_OVERHEAD = 19;
+  const DUMP_LIST_OVERHEAD = 21;
   const maxVisibleDumps = Math.max(0, rows - DUMP_LIST_OVERHEAD);
   const dumpWindowStartRef = useRef(0);
   {

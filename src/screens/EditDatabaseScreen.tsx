@@ -55,7 +55,10 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
   const secondaryColor = getSecondaryColor(config);
   const textColor = getTextColor(config);
   const cursorColor = getCursorColor(config);
-  const userListHeight = Math.max(3, rows - 15);
+  // User list height incl. its 2 always-rendered ↑/↓ rows: 19 fixed rows of
+  // chrome + 2 for App.tsx's update banner. Floor of 2 only covers those
+  // indicator rows — see the list windowing note further down.
+  const userListHeight = Math.max(2, rows - 21);
   const versions = config.odoo_versions ?? {};
 
   const [phase, setPhase] = useState<EditPhase>('select_db');
@@ -125,7 +128,7 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
   // Services screen (OdooServiceScreen.tsx): an unbounded list can exceed the
   // height-constrained outer Box and corrupt the whole frame. No floor on the
   // visible count — it must be free to show fewer items on a small terminal.
-  const DB_LIST_OVERHEAD = 17;
+  const DB_LIST_OVERHEAD = 19;
   const maxVisibleDbs = Math.max(0, rows - DB_LIST_OVERHEAD);
   const dbWindowStartRef = useRef(0);
   {
@@ -568,32 +571,28 @@ export function EditDatabaseScreen({ config, leftWidth, onBack }: EditDatabaseSc
                   const visible = filteredUsers.slice(winStart, winEnd);
                   return (
                     <Box flexDirection="column" height={userListHeight} overflow="hidden">
-                      <Text color={textColor} dimColor>
+                      <Text color={textColor} dimColor wrap="truncate-end">
                         {winStart > 0 ? `  ↑ ${winStart} de plus` : ''}
                       </Text>
                       {visible.map((u, j) => {
                         const i = winStart + j;
                         const isSel = i === userSel;
                         return (
-                          <Box key={u.id} flexDirection="row">
-                            <Text
-                              color={isSel ? 'black' : 'white'}
-                              backgroundColor={isSel ? cursorColor : undefined}
-                              bold={isSel}
-                            >
-                              {` ${isSel ? '▶' : ' '} ${u.login}`}
-                            </Text>
-                            <Text
-                              color={isSel ? 'black' : (u.active ? 'green' : 'red')}
-                              backgroundColor={isSel ? cursorColor : undefined}
-                              dimColor={!isSel}
-                            >
+                          <Text
+                            key={u.id}
+                            color={isSel ? 'black' : 'white'}
+                            backgroundColor={isSel ? cursorColor : undefined}
+                            bold={isSel}
+                            wrap="truncate-end"
+                          >
+                            {` ${isSel ? '▶' : ' '} ${u.login}`}
+                            <Text color={isSel ? 'black' : (u.active ? 'green' : 'red')} dimColor={!isSel}>
                               {`  ${u.active ? 'actif' : 'inactif'}`}
                             </Text>
-                          </Box>
+                          </Text>
                         );
                       })}
-                      <Text color={textColor} dimColor>
+                      <Text color={textColor} dimColor wrap="truncate-end">
                         {winEnd < filteredUsers.length ? `  ↓ ${filteredUsers.length - winEnd} de plus` : ''}
                       </Text>
                     </Box>
