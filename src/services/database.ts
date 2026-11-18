@@ -464,10 +464,10 @@ export async function listFilestoreDatabases(versions: OdooVersion[]): Promise<F
   return result;
 }
 
-/** Drops a PostgreSQL database */
+/** Drops a PostgreSQL database — a database that no longer exists counts as success */
 export async function dropDatabase(name: string): Promise<DatabaseResult> {
   try {
-    await execFileAsync('dropdb', ['--no-password', name]);
+    await execFileAsync('dropdb', ['--no-password', '--if-exists', name]);
     return { ok: true };
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderrOutput?: string };

@@ -258,9 +258,10 @@ describe('createDatabase / dropDatabase', () => {
     expect(result).toEqual({ ok: false, error: 'database "shop" already exists' });
   });
 
-  it('dropDatabase: ok=true on success', async () => {
+  it('dropDatabase: ok=true on success, with --if-exists so a missing database is not an error', async () => {
     mockExecFile.mockImplementationOnce(makeSuccess('') as never);
     expect(await dropDatabase('shop')).toEqual({ ok: true });
+    expect(mockExecFile).toHaveBeenCalledWith('dropdb', ['--no-password', '--if-exists', 'shop'], expect.anything(), expect.any(Function));
   });
 
   it('dropDatabase: ok=false on failure', async () => {

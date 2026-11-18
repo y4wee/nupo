@@ -143,6 +143,13 @@ export function DropScreen({ config, leftWidth, onBack }: DropScreenProps) {
     setDropPsqlOk(psqlResult.ok);
     setDropPsqlErr(psqlResult.error ?? '');
 
+    // Keep the filestore when the drop fails (e.g. database in use): it is what
+    // lists the database here, so removing it would hide a still-existing db.
+    if (!psqlResult.ok) {
+      setPhase('error');
+      return;
+    }
+
     const fsResult = await removeFilestoreEntry(currentEntry.filestorePath);
     setDropFsOk(fsResult.ok);
     setDropFsErr(fsResult.error ?? '');
@@ -301,17 +308,24 @@ export function DropScreen({ config, leftWidth, onBack }: DropScreenProps) {
               <Box flexDirection="row" gap={1}>
                 <Text color={dropPsqlOk ? 'green' : 'red'}>{dropPsqlOk ? '✓' : '✗'}</Text>
                 <Text color="white">Base psql</Text>
-                {!dropPsqlOk && dropPsqlErr ? (
+              </Box>
+              {!dropPsqlOk && dropPsqlErr ? (
+                <Box paddingLeft={2}>
                   <Text color="red" dimColor>{dropPsqlErr}</Text>
-                ) : null}
-              </Box>
+                </Box>
+              ) : null}
               <Box flexDirection="row" gap={1}>
-                <Text color={dropFsOk ? 'green' : 'red'}>{dropFsOk ? '✓' : '✗'}</Text>
+                <Text color={dropFsOk === null ? textColor : dropFsOk ? 'green' : 'red'} dimColor={dropFsOk === null}>
+                  {dropFsOk === null ? '–' : dropFsOk ? '✓' : '✗'}
+                </Text>
                 <Text color="white">Filestore</Text>
-                {!dropFsOk && dropFsErr ? (
-                  <Text color="red" dimColor>{dropFsErr}</Text>
-                ) : null}
+                {dropFsOk === null && <Text color={textColor} dimColor>conservé</Text>}
               </Box>
+              {dropFsOk === false && dropFsErr ? (
+                <Box paddingLeft={2}>
+                  <Text color="red" dimColor>{dropFsErr}</Text>
+                </Box>
+              ) : null}
             </Box>
             <Text color={textColor} dimColor>↵/Échap retour</Text>
           </Box>

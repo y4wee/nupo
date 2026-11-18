@@ -13,6 +13,15 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.2.53',
+    date: '2026-11-18',
+    entries: [
+      { type: 'fix', label: 'Désinstaller une base : le filestore est conservé si la base ne peut pas être supprimée (ex : base en cours d\'utilisation), elle reste donc visible dans la liste' },
+      { type: 'fix', label: 'Désinstaller une base : un filestore dont la base n\'existe plus est supprimé sans erreur' },
+      { type: 'fix', label: 'Désinstaller une base : message d\'erreur lisible, affiché sous l\'étape concernée' },
+    ],
+  },
+  {
     version: '0.2.52',
     date: '2026-10-28',
     entries: [
